@@ -1,5 +1,6 @@
 dependencies {
     compileOnly(project(":common"))
+    compileOnly(project(":module:module-nms"))
 
     compileOnly(project(":platform:platform-bukkit"))
     compileOnly("ink.ptms:nms-all:1.0.0")
