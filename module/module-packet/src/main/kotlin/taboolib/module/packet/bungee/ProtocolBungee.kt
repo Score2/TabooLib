@@ -8,6 +8,7 @@ import taboolib.common.platform.Platform
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.common.platform.function.adaptPlayer
 import taboolib.common.reflect.Reflex.Companion.getProperty
 import taboolib.module.packet.ChannelExecutor
 
@@ -23,12 +24,12 @@ object ProtocolBungee {
 
     @SubscribeEvent
     fun e(e: PostLoginEvent) {
-        ChannelExecutor.addPlayerChannel(e.player.getChannel())
+        ChannelExecutor.addPlayerChannel(adaptPlayer(e.player), e.player.getChannel())
     }
 
     @SubscribeEvent
     fun e(e: PlayerDisconnectEvent) {
-        ChannelExecutor.removePlayerChannel(e.player.getChannel())
+        ChannelExecutor.removePlayerChannel(adaptPlayer(e.player), e.player.getChannel())
     }
     private fun ProxiedPlayer.getChannel(): Channel {
         return getProperty<Channel>("ch/ch")!!

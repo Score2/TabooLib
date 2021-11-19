@@ -7,6 +7,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import taboolib.common.platform.Platform
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.common.platform.function.adaptPlayer
 import taboolib.common.reflect.Reflex.Companion.getProperty
 import taboolib.module.nms.MinecraftVersion
 import taboolib.module.packet.ChannelExecutor
@@ -22,11 +23,11 @@ import taboolib.module.packet.ChannelExecutor
 object ProtocolBukkit {
     @SubscribeEvent
     fun e(e: PlayerJoinEvent) {
-        ChannelExecutor.addPlayerChannel(e.player.getChannel())
+        ChannelExecutor.addPlayerChannel(adaptPlayer(e.player), e.player.getChannel())
     }
     @SubscribeEvent
     fun e(e: PlayerQuitEvent) {
-        ChannelExecutor.removePlayerChannel(e.player.getChannel())
+        ChannelExecutor.removePlayerChannel(adaptPlayer(e.player), e.player.getChannel())
     }
 
     private fun Player.getChannel(): Channel {
