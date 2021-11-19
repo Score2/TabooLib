@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
 @PlatformSide([Platform.BUKKIT])
 object ChannelExecutor {
 
-    private val id = "taboolib_${pluginId}_packet_handler"
+    private val id = "taboolib_${pluginId}_nms_packet_handler"
     private val addChannelService = Executors.newSingleThreadExecutor()
     private val removeChannelService = Executors.newSingleThreadExecutor()
 
@@ -33,7 +33,7 @@ object ChannelExecutor {
     fun addPlayerChannel(player: Player) {
         addChannelService.submit {
             try {
-                getPlayerChannel(player).pipeline().addBefore("packet_handler", id, ChannelHandler(player))
+                getPlayerChannel(player).pipeline().addBefore("packet_nms_handler", id, ChannelHandler(player))
             } catch (ex: Throwable) {
                 ex.printStackTrace()
             }
