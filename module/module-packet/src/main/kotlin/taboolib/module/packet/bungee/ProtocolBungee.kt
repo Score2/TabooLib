@@ -5,12 +5,14 @@ import net.md_5.bungee.api.connection.ProxiedPlayer
 import net.md_5.bungee.api.event.PlayerDisconnectEvent
 import net.md_5.bungee.api.event.PostLoginEvent
 import taboolib.common.platform.Platform
+import taboolib.common.platform.PlatformImplementation
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.common.platform.function.adaptPlayer
 import taboolib.common.reflect.Reflex.Companion.getProperty
 import taboolib.module.packet.ChannelExecutor
+import taboolib.module.packet.PlatformProtocolHandler
 
 /**
  * TabooLib
@@ -20,7 +22,11 @@ import taboolib.module.packet.ChannelExecutor
  * @since 2021/11/18 23:29
  */
 @PlatformSide([Platform.BUNGEE])
-object ProtocolBungee {
+@PlatformImplementation(Platform.BUNGEE)
+object ProtocolBungee: PlatformProtocolHandler {
+
+    override val DECODER_BASE_NAME = "packet-decoder"
+    override val ENCODER_BASE_NAME = "packet-encoder"
 
     @SubscribeEvent
     fun e(e: PostLoginEvent) {

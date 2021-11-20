@@ -33,7 +33,7 @@ object ChannelExecutor {
     fun addPlayerChannel(player: Player) {
         addChannelService.submit {
             try {
-                getPlayerChannel(player).pipeline().addBefore("packet_nms_handler", id, ChannelHandler(player))
+                getPlayerChannel(player).pipeline().addBefore("packet_handler", id, ChannelHandler(player))
             } catch (ex: Throwable) {
                 ex.printStackTrace()
             }

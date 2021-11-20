@@ -15,7 +15,7 @@ dependencies {
     compileOnly(project(":platform:platform-bungee"))
     compileOnly("net.md_5.bungee:BungeeCord:1:all")
 
-    compileOnly(project(":platform:platform-sponge-api8"))
+    compileOnly(project(":platform:platform-sponge-api7"))
     compileOnly("org.spongepowered:spongeapi:7.1.0")
 
     compileOnly(project(":platform:platform-velocity"))

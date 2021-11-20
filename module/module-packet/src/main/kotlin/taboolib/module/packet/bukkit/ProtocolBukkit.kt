@@ -5,12 +5,14 @@ import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import taboolib.common.platform.Platform
+import taboolib.common.platform.PlatformImplementation
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.common.platform.function.adaptPlayer
 import taboolib.common.reflect.Reflex.Companion.getProperty
 import taboolib.module.nms.MinecraftVersion
 import taboolib.module.packet.ChannelExecutor
+import taboolib.module.packet.PlatformProtocolHandler
 
 /**
  * TabooLib
@@ -20,7 +22,12 @@ import taboolib.module.packet.ChannelExecutor
  * @since 2021/11/19 11:40
  */
 @PlatformSide([Platform.BUKKIT])
-object ProtocolBukkit {
+@PlatformImplementation(Platform.BUKKIT)
+object ProtocolBukkit : PlatformProtocolHandler {
+
+    override val DECODER_BASE_NAME = "decoder"
+    override val ENCODER_BASE_NAME = "encoder"
+
     @SubscribeEvent
     fun e(e: PlayerJoinEvent) {
         ChannelExecutor.addPlayerChannel(adaptPlayer(e.player), e.player.getChannel())
