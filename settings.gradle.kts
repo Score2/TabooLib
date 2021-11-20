@@ -10,11 +10,7 @@ fun importModules() {
     include("module:module-chat")
     include("module:module-lang")
     include("module:module-effect")
-    include("module:module-packet",
-        "module:module-packet:module-packet-sponge-api7",
-        "module:module-packet:module-packet-sponge-api8",
-        "module:module-packet:module-packet-sponge-api9",
-    )
+    include("module:module-packet")
     include("module:module-kether")
     include("module:module-metrics")
     include("module:module-database")
