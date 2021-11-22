@@ -25,8 +25,8 @@ import taboolib.module.packet.PlatformProtocolHandler
 @PlatformImplementation(Platform.BUNGEE)
 object ProtocolBungee: PlatformProtocolHandler {
 
-    override val DECODER_BASE_NAME = "packet-decoder"
-    override val ENCODER_BASE_NAME = "packet-encoder"
+    override val DECODER_BASE_NAME = "frame-decoder"
+    override val ENCODER_BASE_NAME = "frame-prepender"
 
     @SubscribeEvent
     fun e(e: PostLoginEvent) {

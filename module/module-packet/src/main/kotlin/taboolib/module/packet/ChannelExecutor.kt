@@ -3,8 +3,8 @@ package taboolib.module.packet
 import io.netty.buffer.ByteBuf
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
-import io.netty.handler.codec.MessageToMessageDecoder
-import io.netty.handler.codec.MessageToMessageEncoder
+import io.netty.handler.codec.ByteToMessageDecoder
+import io.netty.handler.codec.MessageToByteEncoder
 import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.function.implementations
 import taboolib.common.platform.function.pluginId
@@ -31,7 +31,7 @@ object ChannelExecutor {
     fun addPlayerChannel(player: ProxyPlayer, channel: Channel) {
         addChannelService.submit {
             try {
-                channel.pipeline().addBefore(DECODER_BASE_NAME, DECODER_NAME, object : MessageToMessageDecoder<ByteBuf>() {
+                channel.pipeline().addAfter(DECODER_BASE_NAME, DECODER_NAME, object : ByteToMessageDecoder() {
                     override fun decode(channelHandlerContext: ChannelHandlerContext, byteBuf: ByteBuf, list: MutableList<Any>) {
                         if (PacketEvent.Receive(player, Packet(byteBuf)).call()) {
                             list.add(byteBuf)
@@ -42,7 +42,7 @@ object ChannelExecutor {
                 ex.printStackTrace()
             }
             try {
-                channel.pipeline().addBefore(ENCODER_BASE_NAME, ENCODER_NAME, object : MessageToMessageEncoder<ByteBuf>() {
+                channel.pipeline().addAfter(ENCODER_BASE_NAME, ENCODER_NAME, object : MessageToByteEncoder<ByteBuf>() {
                     override fun encode(channelHandlerContext: ChannelHandlerContext, byteBuf: ByteBuf, list: MutableList<Any>) {
                         if (PacketEvent.Send(player, Packet(byteBuf)).call()) {
                             list.add(byteBuf)
