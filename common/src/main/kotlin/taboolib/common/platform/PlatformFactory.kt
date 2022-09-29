@@ -1,41 +1,56 @@
 package taboolib.common.platform
 
+import taboolib.common.LifeCycle
 import taboolib.common.TabooLibCommon
 import taboolib.common.env.RuntimeEnv
-import taboolib.common.inject.Injector
-import taboolib.common.inject.RuntimeInjector
+import taboolib.common.inject.ClassVisitor
+import taboolib.common.inject.VisitorHandler
 import taboolib.common.io.getInstance
 import taboolib.common.io.runningClasses
+import taboolib.common.io.runningClassesWithoutLibrary
+import taboolib.common.io.runningExactClasses
 import taboolib.common.platform.function.runningPlatform
 import taboolib.common.platform.function.unregisterCommands
+import java.util.concurrent.ConcurrentHashMap
 
-@Suppress("UNCHECKED_CAST", "NO_REFLECTION_IN_CLASS_PATH")
 object PlatformFactory {
 
-    val awokenMap = HashMap<String, Any>()
+    val awokenMap = ConcurrentHashMap<String, Any>()
 
-    val serviceMap = HashMap<String, Any>()
+    val serviceMap = ConcurrentHashMap<String, Any>()
 
     fun init() {
         if (TabooLibCommon.isKotlinEnvironment()) {
-            runningClasses.forEach {
-                kotlin.runCatching {
-                    RuntimeEnv.ENV.inject(it)
-                }.exceptionOrNull()?.printStackTrace()
+            // 注册 Awake 接口
+            try {
+                LifeCycle.values().forEach { VisitorHandler.register(AwakeFunction(it)) }
+            } catch (_: NoClassDefFoundError) {
             }
-            runningClasses.forEach {
+
+            // 开发环境
+            if (TabooLibCommon.isDevelopmentMode()) {
+                val time = System.currentTimeMillis()
+                TabooLibCommon.print("RunningClasses = ${runningClasses.size}")
+                TabooLibCommon.print("RunningClasses (Exact) = ${runningExactClasses.size}")
+                TabooLibCommon.print("RunningClasses (WithoutLibrary) = ${runningClassesWithoutLibrary.size}")
+                TabooLibCommon.print("${System.currentTimeMillis() - time}ms")
+            }
+
+            // 加载运行环境
+            runningClassesWithoutLibrary.parallelStream().forEach {
+                kotlin.runCatching { RuntimeEnv.ENV.inject(it) }.exceptionOrNull()?.takeIf { it !is NoClassDefFoundError }?.printStackTrace()
+            }
+
+            // 加载接口
+            runningClassesWithoutLibrary.parallelStream().forEach {
                 if (it.isAnnotationPresent(Awake::class.java) && checkPlatform(it)) {
                     val interfaces = it.interfaces
                     val instance = it.getInstance(true)?.get() ?: return@forEach
-                    if (interfaces.contains(Injector.Fields::class.java)) {
-                        RuntimeInjector.register(instance as Injector.Fields)
+                    // 依赖注入接口
+                    if (ClassVisitor::class.java.isAssignableFrom(it)) {
+                        VisitorHandler.register(instance as ClassVisitor)
                     }
-                    if (interfaces.contains(Injector.Methods::class.java)) {
-                        RuntimeInjector.register(instance as Injector.Methods)
-                    }
-                    if (interfaces.contains(Injector.Classes::class.java)) {
-                        RuntimeInjector.register(instance as Injector.Classes)
-                    }
+                    // 平台服务
                     interfaces.forEach { int ->
                         if (int.isAnnotationPresent(PlatformService::class.java)) {
                             serviceMap[int.name] = instance
@@ -43,11 +58,20 @@ object PlatformFactory {
                     }
                     awokenMap[it.name] = instance
                 }
+                // 平台实现
                 if (it.isAnnotationPresent(PlatformImplementation::class.java) && it.getAnnotation(PlatformImplementation::class.java).platform == runningPlatform) {
                     val interfaces = it.interfaces
                     if (interfaces.isNotEmpty()) {
                         awokenMap[interfaces[0].name] = it.getInstance(true)?.get() ?: return@forEach
                     }
+                }
+            }
+
+            // 开发环境
+            if (TabooLibCommon.isDevelopmentMode()) {
+                TabooLibCommon.print("Service = ${serviceMap.size}")
+                serviceMap.forEach { (k, v) ->
+                    TabooLibCommon.print(" = $k -> $v")
                 }
             }
         }
@@ -79,13 +103,27 @@ object PlatformFactory {
      * 获取已被唤醒的 API 实例
      */
     inline fun <reified T> getAPI(): T {
-        return awokenMap[T::class.java.name] as T
+        return awokenMap[T::class.java.name] as? T ?: error("API (${T::class.java.name}) not found, currently: ${awokenMap.keys}")
     }
 
     /**
      * 获取已注册的跨平台服务
      */
     inline fun <reified T> getService(): T {
-        return serviceMap[T::class.java.name] as T
+        return serviceMap[T::class.java.name] as? T ?: error("Service (${T::class.java}) not found, currently: ${serviceMap.keys}")
+    }
+
+    /**
+     * 注册 API
+     */
+    inline fun <reified T : Any> registerAPI(instance: Any) {
+        awokenMap[T::class.java.name] = instance
+    }
+
+    /**
+     * 注册跨平台服务
+     */
+    inline fun <reified T : Any> registerService(instance: Any) {
+        serviceMap[T::class.java.name] = instance
     }
 }

@@ -5,6 +5,7 @@ import taboolib.common.platform.Awake
 import taboolib.common.platform.Platform
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.service.PlatformIO
+import taboolib.common.util.unsafeLazy
 import java.io.File
 import java.util.logging.Logger
 
@@ -19,7 +20,7 @@ import java.util.logging.Logger
 @PlatformSide([Platform.BUNGEE])
 class BungeeIO : PlatformIO {
 
-    val plugin by lazy { BungeePlugin.getInstance() }
+    val plugin by unsafeLazy { BungeePlugin.getInstance() }
 
     private val logger: Logger
         get() = try {
@@ -55,7 +56,7 @@ class BungeeIO : PlatformIO {
     }
 
     override fun releaseResourceFile(path: String, replace: Boolean): File {
-        val file = File(BungeePlugin.getInstance().dataFolder, path)
+        val file = File(getDataFolder(), path)
         if (file.exists() && !replace) {
             return file
         }
@@ -64,11 +65,11 @@ class BungeeIO : PlatformIO {
     }
 
     override fun getJarFile(): File {
-        return BungeePlugin.getInstance().file
+        return BungeePlugin.getPluginInstance()?.nativeJarFile() ?: BungeePlugin.getInstance().file
     }
 
     override fun getDataFolder(): File {
-        return BungeePlugin.getInstance().dataFolder
+        return BungeePlugin.getPluginInstance()?.nativeDataFolder() ?: BungeePlugin.getInstance().dataFolder
     }
 
     override fun getPlatformData(): Map<String, Any> {

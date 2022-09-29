@@ -133,7 +133,10 @@ public class ItemTagData {
     }
 
     public ItemTagList asList() {
-        return (ItemTagList) data;
+        if (data instanceof ItemTagList) {
+            return (ItemTagList) data;
+        }
+        return ItemTagList.of(data);
     }
 
     public ItemTagType getType() {
@@ -176,14 +179,14 @@ public class ItemTagData {
             ((ConfigurationSection) obj).getValues(false).forEach((key, value) -> itemTag.put(key, toNBT(value)));
             return itemTag;
         }
-        return new ItemTagData("error: " + obj);
+        return new ItemTagData("Not supported: " + obj);
     }
 
     public static ItemTagList translateList(ItemTagList itemTagListBase, List list) {
         for (Object obj : list) {
             ItemTagData base = toNBT(obj);
             if (base == null) {
-                IOKt.warning("Invalid Type: " + obj + " [" + obj.getClass().getSimpleName() + "]");
+                IOKt.warning("Not supported: " + obj + " [" + obj.getClass().getSimpleName() + "]");
                 continue;
             }
             itemTagListBase.add(base);

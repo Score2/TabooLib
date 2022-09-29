@@ -1,8 +1,9 @@
 package taboolib.library.kether;
 
 import org.jetbrains.annotations.NotNull;
-import taboolib.library.kether.actions.LiteralAction;
+import taboolib.module.kether.Kether;
 import taboolib.module.kether.action.ActionGet;
+import taboolib.module.kether.action.ActionLiteral;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +26,11 @@ public class SimpleReader extends AbstractStringReader implements QuestReader {
 
     @Override
     public String nextToken() {
+        return nextTokenBlock().getToken();
+    }
+
+    @NotNull
+    public TokenBlock nextTokenBlock() {
         skipBlank();
         switch (peek()) {
             case '"': {
@@ -45,7 +51,7 @@ public class SimpleReader extends AbstractStringReader implements QuestReader {
                 if (met < cnt) throw LoadError.STRING_NOT_CLOSE.create(cnt);
                 String ret = new String(content, index, i - cnt - index);
                 index = i;
-                return ret;
+                return new TokenBlock(ret, true);
             }
             case '\'': {
                 skip(1);
@@ -55,10 +61,10 @@ public class SimpleReader extends AbstractStringReader implements QuestReader {
                 }
                 String ret = new String(content, i, index - i);
                 skip(1);
-                return ret;
+                return new TokenBlock(ret, true);
             }
             default: {
-                return super.nextToken();
+                return new TokenBlock(super.nextToken(), false);
             }
         }
     }
@@ -88,7 +94,7 @@ public class SimpleReader extends AbstractStringReader implements QuestReader {
             case '*': {
                 skip(1);
                 beforeParse();
-                return wrap(new LiteralAction<>(nextToken()));
+                return wrap(new ActionLiteral<>(nextToken()));
             }
             default: {
                 String element = nextToken();
@@ -96,6 +102,9 @@ public class SimpleReader extends AbstractStringReader implements QuestReader {
                 if (optional.isPresent()) {
                     beforeParse();
                     return wrap(optional.get().resolve(this));
+                } else if (Kether.INSTANCE.isAllowToleranceParser()) {
+                    beforeParse();
+                    return wrap(new ActionLiteral<>(element, true));
                 }
                 throw LoadError.UNKNOWN_ACTION.create(element);
             }

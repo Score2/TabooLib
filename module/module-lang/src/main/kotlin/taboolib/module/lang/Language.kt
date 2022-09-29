@@ -7,6 +7,7 @@ import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.SkipTo
 import taboolib.common.platform.function.getJarFile
 import taboolib.common.platform.function.info
+import taboolib.common.platform.function.pluginId
 import taboolib.module.chat.HexColor
 import taboolib.module.chat.colored
 import taboolib.module.lang.event.PlayerSelectLocaleEvent
@@ -53,6 +54,7 @@ object Language {
     )
 
     init {
+        // 加载语言文件类型
         JarFile(getJarFile()).use { jar ->
             jar.entries().iterator().forEachRemaining {
                 if (it.name.startsWith("lang/") && it.name.endsWith(".yml")) {
@@ -60,6 +62,7 @@ object Language {
                 }
             }
         }
+        // 加载颜色字符模块
         try {
             HexColor.translate("")
             textTransfer += object : TextTransfer {
@@ -67,7 +70,7 @@ object Language {
                     return source.colored()
                 }
             }
-        } catch (ex: NoClassDefFoundError) {
+        } catch (_: NoClassDefFoundError) {
         }
     }
 
@@ -95,6 +98,7 @@ object Language {
 
     @Awake(LifeCycle.INIT)
     fun reload() {
+        // 加载语言文件
         firstLoaded = true
         languageFile.clear()
         languageFile.putAll(ResourceReader(Language::class.java).files)

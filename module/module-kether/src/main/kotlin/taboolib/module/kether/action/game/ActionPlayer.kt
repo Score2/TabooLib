@@ -1,6 +1,5 @@
 package taboolib.module.kether.action.game
 
-import taboolib.common.platform.ProxyPlayer
 import taboolib.library.kether.ArgTypes
 import taboolib.library.kether.ParsedAction
 import taboolib.module.kether.*
@@ -13,7 +12,7 @@ import java.util.concurrent.CompletableFuture
 class ActionPlayer(val name: String, val operator: PlayerOperator, val method: PlayerOperator.Method, val value: ParsedAction<*>?) : ScriptAction<Any?>() {
 
     override fun run(frame: ScriptFrame): CompletableFuture<Any?> {
-        val viewer = frame.script().sender as? ProxyPlayer ?: error("No player selected.")
+        val viewer = frame.player()
         return if (value != null) {
             frame.newFrame(value).run<Any>().thenApplyAsync({
                 try {
@@ -29,7 +28,7 @@ class ActionPlayer(val name: String, val operator: PlayerOperator, val method: P
         }
     }
 
-    internal object Parser {
+    object Parser {
 
         init {
             PlayerOperators.values().forEach { Kether.addPlayerOperator(it.name, it.build()) }

@@ -1,7 +1,6 @@
 package taboolib.platform
 
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.ComponentBuilder
 import net.md_5.bungee.api.ChatColor
 import net.md_5.bungee.api.chat.BaseComponent
 import net.md_5.bungee.api.chat.TextComponent
@@ -21,10 +20,10 @@ import taboolib.common.platform.command.*
 import taboolib.common.platform.function.adaptCommandSender
 import taboolib.common.platform.function.submit
 import taboolib.common.platform.service.PlatformCommand
-import taboolib.common.reflect.Reflex.Companion.getProperty
-import taboolib.common.reflect.Reflex.Companion.invokeMethod
-import taboolib.common.reflect.Reflex.Companion.setProperty
-import java.lang.ClassCastException
+import org.tabooproject.reflex.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.invokeMethod
+import org.tabooproject.reflex.Reflex.Companion.setProperty
+import taboolib.common.util.unsafeLazy
 import java.lang.reflect.Constructor
 
 /**
@@ -41,21 +40,23 @@ class BukkitCommand : PlatformCommand {
     val plugin: BukkitPlugin
         get() = BukkitPlugin.getInstance()
 
-    val commandMap by lazy {
+    val commandMap by unsafeLazy {
         Bukkit.getPluginManager().getProperty<SimpleCommandMap>("commandMap")!!
     }
 
-    val knownCommands by lazy {
+    val knownCommands by unsafeLazy {
         commandMap.getProperty<MutableMap<String, Command>>("knownCommands")!!
     }
 
-    val constructor: Constructor<PluginCommand> by lazy {
+    val constructor: Constructor<PluginCommand> by unsafeLazy {
         PluginCommand::class.java.getDeclaredConstructor(String::class.java, Plugin::class.java).also {
             it.isAccessible = true
         }
     }
 
     val registeredCommands = ArrayList<CommandStructure>()
+
+    private var isSupportedUnknownCommand = false
 
     override fun registerCommand(
         command: CommandStructure,
@@ -114,19 +115,22 @@ class BukkitCommand : PlatformCommand {
             kotlin.runCatching {
                 if (pluginCommand.getProperty<Any>("timings") == null) {
                     val timingsManager = Class.forName("co.aikar.timings.TimingsManager")
-                    pluginCommand.setProperty("timings", timingsManager.invokeMethod("getCommandTiming", plugin.name, pluginCommand, fixed = true))
+                    pluginCommand.setProperty("timings", timingsManager.invokeMethod("getCommandTiming", plugin.name, pluginCommand, isStatic = true))
                 }
             }
+            sync()
             registeredCommands.add(command)
         }
     }
 
     override fun unregisterCommand(command: String) {
         knownCommands.remove(command)
+        sync()
     }
 
     override fun unregisterCommands() {
         registeredCommands.forEach { taboolib.common.platform.function.unregisterCommand(it) }
+        sync()
     }
 
     override fun unknownCommand(sender: ProxyCommandSender, command: String, state: Int) {
@@ -146,5 +150,18 @@ class BukkitCommand : PlatformCommand {
             it.isItalic = true
         }
         sender.cast<CommandSender>().spigot().sendMessage(*components.toTypedArray())
+    }
+
+    override fun isSupportedUnknownCommand(): Boolean {
+        return isSupportedUnknownCommand
+    }
+
+    fun sync() {
+        // 1.13 sync commands
+        kotlin.runCatching {
+            Bukkit.getServer().invokeMethod<Void>("syncCommands")
+            Bukkit.getOnlinePlayers().forEach { it.updateCommands() }
+            isSupportedUnknownCommand = true
+        }
     }
 }

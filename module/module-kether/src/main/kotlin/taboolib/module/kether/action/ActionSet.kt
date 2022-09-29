@@ -1,11 +1,11 @@
 package taboolib.module.kether.action
 
-import taboolib.library.kether.ArgTypes
 import taboolib.library.kether.ParsedAction
 import taboolib.library.kether.QuestAction
 import taboolib.library.kether.QuestContext
-import taboolib.library.kether.actions.LiteralAction
 import taboolib.module.kether.KetherParser
+import taboolib.module.kether.literalAction
+import taboolib.module.kether.run
 import taboolib.module.kether.scriptParser
 import java.util.concurrent.CompletableFuture
 
@@ -26,13 +26,13 @@ class ActionSet {
     class ForAction(val key: String, val action: ParsedAction<*>) : QuestAction<Void>() {
 
         override fun process(frame: QuestContext.Frame): CompletableFuture<Void> {
-            return frame.newFrame(action).run<Any?>().thenAccept {
+            return frame.run(action).thenAccept {
                 frame.variables().set(key, it)
             }
         }
     }
 
-    internal object Parser {
+    object Parser {
 
         /**
          * set xx to xx
@@ -44,33 +44,42 @@ class ActionSet {
             val token = it.nextToken()
             if (token.isNotEmpty() && token[token.length - 1] == ']' && token.indexOf('[') in 1 until token.length) {
                 it.reset()
-                val action = it.next(ArgTypes.ACTION).action as ActionProperty.Get
+                val action = it.nextParsedAction().action as ActionProperty.Get
                 it.mark()
                 try {
                     it.expect("to")
-                    ActionProperty.Set(action.instance, action.key, it.next(ArgTypes.ACTION))
+                    ActionProperty.Set(action.instance, action.key, it.nextParsedAction())
                 } catch (ex: Exception) {
                     it.reset()
-                    ActionProperty.Set(action.instance, action.key, ParsedAction(LiteralAction<String>(it.nextToken())))
+                    ActionProperty.Set(action.instance, action.key, literalAction(it.nextToken()))
                 }
-            } else {
+            } else if (token == "property") {
                 it.mark()
                 try {
-                    it.expect("property")
                     val property = it.nextToken()
-                    val source = it.next(ArgTypes.ACTION)
+                    it.expect("from")
+                    val source = it.nextParsedAction()
                     it.expect("to")
-                    ActionProperty.Set(source, property, it.next(ArgTypes.ACTION))
+                    ActionProperty.Set(source, property, it.nextParsedAction())
                 } catch (ex: Exception) {
                     it.reset()
                     it.mark()
                     try {
                         it.expect("to")
-                        ForAction(token, it.next(ArgTypes.ACTION))
+                        ForAction(token, it.nextParsedAction())
                     } catch (ex: Exception) {
                         it.reset()
                         ForConstant(token, it.nextToken())
                     }
+                }
+            } else {
+                it.mark()
+                try {
+                    it.expect("to")
+                    ForAction(token, it.nextParsedAction())
+                } catch (ex: Exception) {
+                    it.reset()
+                    ForConstant(token, it.nextToken())
                 }
             }
         }

@@ -51,11 +51,11 @@ class BridgeCollection constructor(val database: BridgeDatabase, val collection:
         if (data == null) {
             return
         }
-        val current = data.data().toMap()
+        val current = data.data().getValues()
         if (!data.checked && mongoCollection.countDocuments(Filters.eq("id", id)) == 0L) {
             mongoCollection.insertOne(Document().append("id", id))
         }
-        val contrast = data.lastUpdate.contrastAs(current)
+        val contrast = current.contrastAs(data.lastUpdate)
         if (contrast.isNotEmpty()) {
             mongoCollection.updateOne(Filters.eq("id", id), Updates.combine(toBson(contrast)))
             data.checked = true

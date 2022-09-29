@@ -1,7 +1,6 @@
 package taboolib.module.kether.action.game
 
 import taboolib.common.platform.function.console
-import taboolib.library.kether.ArgTypes
 import taboolib.library.kether.ParsedAction
 import taboolib.module.kether.*
 import java.util.concurrent.CompletableFuture
@@ -17,15 +16,15 @@ class ActionCommand(val command: ParsedAction<*>, val type: Type) : ScriptAction
     }
 
     override fun run(frame: ScriptFrame): CompletableFuture<Void> {
-        return frame.newFrame(command).run<Any>().thenAcceptAsync({
+        return frame.run(command).thenAcceptAsync({
             val command = it.toString().trimIndent()
             when (type) {
                 Type.PLAYER -> {
-                    val viewer = frame.script().sender ?: error("No sender selected.")
+                    val viewer = frame.player()
                     viewer.performCommand(command.replace("@sender", viewer.name))
                 }
                 Type.OPERATOR -> {
-                    val viewer = frame.script().sender ?: error("No sender selected.")
+                    val viewer = frame.player()
                     val isOp = viewer.isOp
                     viewer.isOp = true
                     try {
@@ -36,18 +35,17 @@ class ActionCommand(val command: ParsedAction<*>, val type: Type) : ScriptAction
                     viewer.isOp = isOp
                 }
                 Type.CONSOLE -> {
-                    val viewer = frame.script().sender?.name.toString()
-                    console().performCommand(command.replace("@sender", viewer))
+                    console().performCommand(command.replace("@sender", "console"))
                 }
             }
         }, frame.context().executor)
     }
 
-    internal object Parser {
+    object Parser {
 
         @KetherParser(["command"])
         fun parser() = scriptParser {
-            val command = it.next(ArgTypes.ACTION)
+            val command = it.nextParsedAction()
             it.mark()
             val by = try {
                 it.expects("by", "with", "as")

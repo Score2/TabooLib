@@ -20,7 +20,11 @@ public @interface RuntimeDependency {
 
     boolean ignoreOptional() default true;
 
+    boolean ignoreException() default false;
+
     DependencyScope[] scopes() default {DependencyScope.RUNTIME, DependencyScope.COMPILE};
 
     String[] relocate() default {};
+
+    boolean initiative() default false;
 }

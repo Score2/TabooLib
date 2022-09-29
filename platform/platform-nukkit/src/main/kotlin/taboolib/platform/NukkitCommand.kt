@@ -14,7 +14,9 @@ import taboolib.common.platform.command.CommandExecutor
 import taboolib.common.platform.command.CommandStructure
 import taboolib.common.platform.function.adaptCommandSender
 import taboolib.common.platform.service.PlatformCommand
-import taboolib.common.reflect.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.getProperty
+import taboolib.common.util.unsafeLazy
+import java.util.Locale
 
 /**
  * TabooLib
@@ -32,7 +34,7 @@ class NukkitCommand : PlatformCommand {
 
     val knownCommands = ArrayList<CommandStructure>()
 
-    val registeredCommands by lazy {
+    val registeredCommands by unsafeLazy {
         Server.getInstance().commandRegistry.getProperty<MutableMap<String, Command>>("registeredCommands")!!
     }
 
@@ -73,6 +75,5 @@ class NukkitCommand : PlatformCommand {
             2 -> sender.cast<CommandSender>().sendMessage("§cIncorrect argument for command")
             else -> return
         }
-        sender.cast<CommandSender>().sendMessage("$command§r§c§o<--[HERE]")
     }
 }

@@ -1,9 +1,9 @@
 package taboolib.module.kether
 
-import taboolib.common.reflect.Reflex.Companion.setProperty
+import org.tabooproject.reflex.Reflex.Companion.setProperty
 import taboolib.library.kether.*
-import taboolib.library.kether.actions.LiteralAction
 import taboolib.module.kether.action.ActionGet
+import taboolib.module.kether.action.ActionLiteral
 import taboolib.module.kether.action.ActionProperty
 
 /**
@@ -30,6 +30,11 @@ class KetherScriptLoader : SimpleQuestLoader() {
             return super.nextToken().replace("\\s", " ")
         }
 
+        override fun nextTokenBlock(): TokenBlock {
+            val block = super.nextTokenBlock()
+            return TokenBlock(block.token.replace("\\s", " "), block.isBlock)
+        }
+
         @Suppress("UNCHECKED_CAST")
         override fun <T : Any?> nextAction(): ParsedAction<T> {
             skipBlank()
@@ -52,23 +57,30 @@ class KetherScriptLoader : SimpleQuestLoader() {
                 }
                 '*' -> {
                     skip(1)
-                    wrap(LiteralAction(nextToken()))
+                    wrap(ActionLiteral(nextToken()))
                 }
                 else -> {
-                    val token = nextToken()
-                    if (token.isNotEmpty() && token[token.length - 1] == ']' && token.indexOf('[') in 1 until token.length) {
+                    // property player[name]
+                    val tokenBlock = nextTokenBlock()
+                    val token = tokenBlock.token
+                    if (!tokenBlock.isBlock && token.isNotEmpty() && token[token.length - 1] == ']' && token.indexOf('[') in 1 until token.length) {
                         val i = token.indexOf('[')
                         val element = token.substring(0, i)
                         val optional = service.registry.getParser(element, namespace)
                         if (optional.isPresent) {
                             val propertyKey = token.substring(i + 1, token.length - 1)
                             return wrap(ActionProperty.Get(wrap(optional.get().resolve<Any>(this)), propertyKey)) as ParsedAction<T>
+                        } else if (Kether.isAllowToleranceParser) {
+                            val propertyKey = token.substring(i + 1, token.length - 1)
+                            return wrap(ActionProperty.Get(wrap(ActionLiteral<Any>(element, true)), propertyKey)) as ParsedAction<T>
                         }
                         throw LoadError.UNKNOWN_ACTION.create(element)
                     } else {
                         val optional = service.registry.getParser(token, namespace)
                         if (optional.isPresent) {
                             return wrap(optional.get().resolve(this))
+                        } else if (Kether.isAllowToleranceParser) {
+                            return wrap(ActionLiteral(token, true))
                         }
                         throw LoadError.UNKNOWN_ACTION.create(token)
                     }

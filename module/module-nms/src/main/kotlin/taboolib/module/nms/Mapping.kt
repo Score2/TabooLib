@@ -1,7 +1,9 @@
 package taboolib.module.nms
 
+import taboolib.common.util.join
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.util.*
 
 /**
  * TabooLib
@@ -12,8 +14,9 @@ import java.nio.charset.StandardCharsets
  */
 class Mapping(inputStreamCombined: InputStream, inputStreamFields: InputStream) {
 
-    val classMap = HashMap<String, String>()
-    val fields = ArrayList<Field>()
+    val classMap = LinkedHashMap<String, String>()
+    val fields = LinkedList<Field>()
+    val methods = LinkedList<Method>() // 1.18 only
 
     init {
         inputStreamCombined.use {
@@ -33,14 +36,27 @@ class Mapping(inputStreamCombined: InputStream, inputStreamFields: InputStream) 
                     return@forEach
                 }
                 val args = line.split(' ')
-                if (args.size == 3) {
-                    fields += Field(args[0].replace("/", "."), args[1], args[2])
+                if (args.size >= 3) {
+                    // 1.18 开始支持方法映射
+                    if (args[2].startsWith("(")) {
+                        val info = join(args.toTypedArray(), 2)
+                        val name = info.substringAfterLast(' ')
+                        val parameter = info.substringBeforeLast(' ')
+                        methods += Method(args[0].replace("/", "."), args[1], name, parameter)
+                    } else {
+                        fields += Field(args[0].replace("/", "."), args[1], args[2])
+                    }
                 }
             }
         }
     }
 
     class Field(val path: String, val mojangName: String, val translateName: String) {
+
+        val className = path.substringAfterLast('.', "")
+    }
+
+    data class Method(val path: String, val mojangName: String, val translateName: String, val descriptor: String) {
 
         val className = path.substringAfterLast('.', "")
     }

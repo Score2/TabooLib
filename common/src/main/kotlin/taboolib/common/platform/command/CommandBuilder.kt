@@ -1,7 +1,9 @@
 package taboolib.common.platform.command
 
 import taboolib.common.Isolated
+import taboolib.common.platform.PlatformFactory
 import taboolib.common.platform.ProxyCommandSender
+import taboolib.common.platform.service.PlatformCommand
 import taboolib.common.util.join
 import taboolib.common.util.subList
 
@@ -12,7 +14,7 @@ import taboolib.common.util.subList
  * @author sky
  * @since 2021/6/25 12:50 上午
  */
-@Suppress("UNCHECKED_CAST")
+@Suppress("UNCHECKED_CAST", "DuplicatedCode")
 @Isolated
 object CommandBuilder {
 
@@ -38,11 +40,16 @@ object CommandBuilder {
                 str += " "
                 str += "§c§n${args.last()}"
             }
-            when (state) {
-                1 -> context.sender.sendMessage("§cUnknown or incomplete command, see below for error")
-                2 -> context.sender.sendMessage("§cIncorrect argument for command")
+            val command = PlatformFactory.getService<PlatformCommand>()
+            if (command.isSupportedUnknownCommand()) {
+                command.unknownCommand(context.sender, str, state)
+            } else {
+                when (state) {
+                    1 -> context.sender.sendMessage("§cUnknown or incomplete command, see below for error")
+                    2 -> context.sender.sendMessage("§cIncorrect argument for command")
+                }
+                context.sender.sendMessage("§7$str§r§c§o<--[HERE]")
             }
-            context.sender.sendMessage("§7$str§r§c§o<--[HERE]")
         }
 
         fun execute(context: CommandContext<*>): Boolean {
@@ -69,7 +76,7 @@ object CommandBuilder {
                 val children = component.children(context).firstOrNull {
                     context.index = cur
                     when (it) {
-                        is CommandComponentLiteral -> it.aliases.contains(argument)
+                        is CommandComponentLiteral -> it.aliases.any { a -> a.equals(argument, true) }
                         is CommandComponentDynamic -> {
                             val suggestion = it.commandSuggestion
                             when {
@@ -118,7 +125,7 @@ object CommandBuilder {
                 val children = component.children(context).firstOrNull {
                     context.index = cur
                     when (it) {
-                        is CommandComponentLiteral -> it.aliases.contains(argument)
+                        is CommandComponentLiteral -> it.aliases.any { a -> a.equals(argument, true) }
                         is CommandComponentDynamic -> {
                             val suggestion = it.commandSuggestion
                             when {

@@ -7,7 +7,6 @@ import net.minecraft.server.v1_14_R1.BlockPosition;
 import net.minecraft.server.v1_14_R1.EnumSkyBlock;
 import net.minecraft.server.v1_14_R1.MobEffectList;
 import net.minecraft.server.v1_14_R1.*;
-import net.minecraft.server.v1_15_R1.LightEngineThreaded;
 import net.minecraft.server.v1_16_R1.Registry;
 import net.minecraft.server.v1_16_R1.WorldDataServer;
 import net.minecraft.server.v1_8_R3.NBTTagByte;
@@ -20,8 +19,10 @@ import net.minecraft.server.v1_8_R3.NBTTagList;
 import net.minecraft.server.v1_8_R3.NBTTagLong;
 import net.minecraft.server.v1_8_R3.NBTTagShort;
 import net.minecraft.server.v1_8_R3.NBTTagString;
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
-import org.bukkit.*;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.craftbukkit.v1_13_R2.CraftWorld;
 import org.bukkit.craftbukkit.v1_8_R3.inventory.CraftItemStack;
@@ -35,13 +36,14 @@ import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.tabooproject.reflex.Reflex;
+import org.tabooproject.reflex.UnsafeAccess;
 import taboolib.common.platform.function.IOKt;
-import taboolib.common.reflect.Ref;
-import taboolib.common.reflect.Reflex;
 import taboolib.module.nms.type.LightType;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -60,6 +62,7 @@ public class NMSGenericImpl extends NMSGeneric {
 
     private Field entityTypesField;
     private Constructor packetPlayOutLightUpdateConstructor;
+    private Method getKeyMethod;
 
     public NMSGenericImpl() {
         if (MinecraftVersion.INSTANCE.getMajor() >= 5) {
@@ -72,6 +75,10 @@ public class NMSGenericImpl extends NMSGeneric {
         }
         if (MinecraftVersion.INSTANCE.getMajor() >= 9) {
             try {
+                if (MinecraftVersion.INSTANCE.getMajor() >= 10) {
+                    Class<?> entityTypes = MinecraftServerUtilKt.nmsClass("EntityTypes");
+                    getKeyMethod = ((Class<?>) entityTypes).getDeclaredMethod("a", entityTypes);
+                }
                 packetPlayOutLightUpdateConstructor = net.minecraft.server.v1_16_R1.PacketPlayOutLightUpdate.class.getDeclaredConstructor(
                         net.minecraft.server.v1_16_R1.ChunkCoordIntPair.class,
                         net.minecraft.server.v1_16_R1.LightEngine.class,
@@ -88,12 +95,12 @@ public class NMSGenericImpl extends NMSGeneric {
     @NotNull
     @Override
     public String getKey(ItemStack itemStack) {
-        Object nmsItem = CraftItemStack.asNMSCopy(itemStack);
         if (MinecraftVersion.INSTANCE.getMajor() >= 5) {
             return itemStack.getType().getKey().getKey();
         } else {
+            Object nmsItem = CraftItemStack.asNMSCopy(itemStack);
             net.minecraft.server.v1_12_R1.Item item = ((net.minecraft.server.v1_12_R1.ItemStack) nmsItem).getItem();
-            String name = new Reflex(net.minecraft.server.v1_12_R1.Item.class).instance(item).get("name");
+            String name = Reflex.Companion.getProperty(item, "name", false, false, true);
             String r = "";
             for (char c : name.toCharArray()) {
                 if (Character.isUpperCase(c)) {
@@ -109,23 +116,30 @@ public class NMSGenericImpl extends NMSGeneric {
     @Override
     @NotNull
     public String getName(org.bukkit.inventory.ItemStack itemStack) {
-        Object nmsItem = CraftItemStack.asNMSCopy(itemStack);
+        Object obcItem = CraftItemStack.asNMSCopy(itemStack);
         if (MinecraftVersion.INSTANCE.getMajor() >= 5) {
-            String name = ((net.minecraft.server.v1_8_R3.ItemStack) nmsItem).getItem().getName();
+            String name;
+            // 1.18 Supported
+            if (MinecraftVersion.INSTANCE.getMajor() >= 10) {
+                net.minecraft.server.v1_8_R3.Item nmsItem = ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getItem();
+                name = Reflex.Companion.invokeMethod(nmsItem, "getDescriptionId", new Object[0], false, true, true);
+            } else {
+                name = ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getItem().getName();
+            }
             if (itemStack.getItemMeta() instanceof PotionMeta) {
-                name += ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) nmsItem).getTag().getString("Potion").replaceAll("minecraft:(strong_|long_)?", "");
+                name += ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getTag().getString("Potion").replaceAll("minecraft:(strong_|long_)?", "");
             }
             return name;
         } else if (MinecraftVersion.INSTANCE.getMajor() >= 3) {
-            String name = ((net.minecraft.server.v1_12_R1.ItemStack) nmsItem).getItem().a((net.minecraft.server.v1_12_R1.ItemStack) nmsItem);
+            String name = ((net.minecraft.server.v1_12_R1.ItemStack) obcItem).getItem().a((net.minecraft.server.v1_12_R1.ItemStack) obcItem);
             if (itemStack.getItemMeta() instanceof PotionMeta) {
-                return name.replace("item.", "") + ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) nmsItem).getTag().getString("Potion").replaceAll("(minecraft:)?(strong_|long_)?", "");
+                return name.replace("item.", "") + ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getTag().getString("Potion").replaceAll("(minecraft:)?(strong_|long_)?", "");
             }
             return name + ".name";
         } else {
-            String name = ((net.minecraft.server.v1_8_R3.ItemStack) nmsItem).getItem().getName();
+            String name = ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getItem().getName();
             if (itemStack.getItemMeta() instanceof PotionMeta) {
-                return name.replace("item.", "") + ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) nmsItem).getTag().getString("Potion").replaceAll("(minecraft:)?(strong_|long_)?", "");
+                return name.replace("item.", "") + ".effect." + ((net.minecraft.server.v1_8_R3.ItemStack) obcItem).getTag().getString("Potion").replaceAll("(minecraft:)?(strong_|long_)?", "");
             }
             return name + ".name";
         }
@@ -135,13 +149,26 @@ public class NMSGenericImpl extends NMSGeneric {
     @NotNull
     public String getName(Entity entity) {
         if (MinecraftVersion.INSTANCE.getMajor() >= 6) {
-            Object minecraftKey = net.minecraft.server.v1_14_R1.EntityTypes.getName(((org.bukkit.craftbukkit.v1_14_R1.entity.CraftEntity) entity).getHandle().getEntityType());
-            return "entity.minecraft." + ((net.minecraft.server.v1_14_R1.MinecraftKey) minecraftKey).getKey();
+            Object nmsEntity = ((org.bukkit.craftbukkit.v1_14_R1.entity.CraftEntity) entity).getHandle();
+            Object minecraftKey = null;
+            // 1.18 Supported
+            if (MinecraftVersion.INSTANCE.getMajor() >= 10) {
+                try {
+                    Object type = Reflex.Companion.invokeMethod(nmsEntity, "getType", new Object[0], false, true, true);
+                    minecraftKey = getKeyMethod.invoke(null, type);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return "entity.minecraft." + Reflex.Companion.invokeMethod(minecraftKey, "getPath", new Object[0], false, true, true);
+            } else {
+                minecraftKey = net.minecraft.server.v1_14_R1.EntityTypes.getName(((net.minecraft.server.v1_14_R1.Entity) nmsEntity).getEntityType());
+                return "entity.minecraft." + ((net.minecraft.server.v1_14_R1.MinecraftKey) minecraftKey).getKey();
+            }
         } else if (MinecraftVersion.INSTANCE.getMajor() >= 5) {
             try {
-                String name = "entity.minecraft." + IRegistry.ENTITY_TYPE.getKey(Ref.INSTANCE.get(((org.bukkit.craftbukkit.v1_13_R2.entity.CraftEntity) entity).getHandle(), entityTypesField)).getKey();
+                String name = "entity.minecraft." + IRegistry.ENTITY_TYPE.getKey(UnsafeAccess.INSTANCE.get(((org.bukkit.craftbukkit.v1_13_R2.entity.CraftEntity) entity).getHandle(), entityTypesField)).getKey();
                 if (entity instanceof Villager) {
-                    Object career = Reflex.Companion.invokeMethod(entity, "getCareer", new Object[0], false);
+                    Object career = Reflex.Companion.invokeMethod(entity, "getCareer", new Object[0], false, true, true);
                     if (career != null) {
                         name += "." + String.valueOf(career).toLowerCase(Locale.getDefault());
                     }
@@ -307,11 +334,11 @@ public class NMSGenericImpl extends NMSGeneric {
                 Object nmsTag = new net.minecraft.server.v1_8_R3.NBTTagCompound();
                 if (MinecraftVersion.INSTANCE.isUniversal()) {
                     for (Map.Entry<String, ItemTagData> entry : base.asCompound().entrySet()) {
-                        ((Map) Reflex.Companion.getProperty(nmsTag, "tags", false)).put(entry.getKey(), toNBTBase(entry.getValue()));
+                        ((Map) Reflex.Companion.getProperty(nmsTag, "tags", false, true, true)).put(entry.getKey(), toNBTBase(entry.getValue()));
                     }
                 } else {
                     for (Map.Entry<String, ItemTagData> entry : base.asCompound().entrySet()) {
-                        ((Map) Reflex.Companion.getProperty(nmsTag, "map", false)).put(entry.getKey(), toNBTBase(entry.getValue()));
+                        ((Map) Reflex.Companion.getProperty(nmsTag, "map", false, true, true)).put(entry.getKey(), toNBTBase(entry.getValue()));
                     }
                 }
                 return nmsTag;
@@ -326,9 +353,9 @@ public class NMSGenericImpl extends NMSGeneric {
             ItemTag itemTag = new ItemTag();
             Map<String, net.minecraft.server.v1_12_R1.NBTBase> map;
             if (MinecraftVersion.INSTANCE.isUniversal()) {
-                map = Reflex.Companion.getProperty(base, "tags", false);
+                map = Reflex.Companion.getProperty(base, "tags", false, false, true);
             } else {
-                map = Reflex.Companion.getProperty(base, "map", false);
+                map = Reflex.Companion.getProperty(base, "map", false, false, true);
             }
             for (Map.Entry<String, net.minecraft.server.v1_12_R1.NBTBase> entry : map.entrySet()) {
                 itemTag.put(entry.getKey(), (ItemTagData) fromNBTBase(entry.getValue()));
@@ -336,29 +363,32 @@ public class NMSGenericImpl extends NMSGeneric {
             return itemTag;
         } else if (base instanceof NBTTagList) {
             ItemTagList itemTagList = new ItemTagList();
-            List list = Reflex.Companion.getProperty(base, "list", false);
+            List list = Reflex.Companion.getProperty(base, "list", false, false, true);
             for (Object v : list) {
                 itemTagList.add((ItemTagData) fromNBTBase(v));
             }
             return itemTagList;
-        } else if (base instanceof NBTTagString) {
-            return new ItemTagData(new Reflex(NBTTagString.class).instance(base).get("data", ""));
-        } else if (base instanceof NBTTagDouble) {
-            return new ItemTagData(new Reflex(NBTTagDouble.class).instance(base).get("data", 0D));
-        } else if (base instanceof NBTTagInt) {
-            return new ItemTagData(new Reflex(NBTTagInt.class).instance(base).get("data", 0));
-        } else if (base instanceof NBTTagFloat) {
-            return new ItemTagData(new Reflex(NBTTagFloat.class).instance(base).get("data", (float) 0));
-        } else if (base instanceof NBTTagShort) {
-            return new ItemTagData(new Reflex(NBTTagShort.class).instance(base).get("data", (short) 0));
-        } else if (base instanceof NBTTagLong) {
-            return new ItemTagData(new Reflex(NBTTagLong.class).instance(base).get("data", 0L));
-        } else if (base instanceof NBTTagByte) {
-            return new ItemTagData(new Reflex(NBTTagByte.class).instance(base).get("data", (byte) 0D));
-        } else if (base instanceof NBTTagIntArray) {
-            return new ItemTagData(new Reflex(NBTTagIntArray.class).instance(base).get("data", new int[0]));
-        } else if (base instanceof NBTTagByteArray) {
-            return new ItemTagData(new Reflex(NBTTagByteArray.class).instance(base).get("data", new byte[0]));
+        } else {
+            Object data = Reflex.Companion.getProperty(base, "data", false, false, true);
+            if (base instanceof NBTTagString) {
+                return new ItemTagData((String) data);
+            } else if (base instanceof NBTTagDouble) {
+                return new ItemTagData((double) data);
+            } else if (base instanceof NBTTagInt) {
+                return new ItemTagData((int) data);
+            } else if (base instanceof NBTTagFloat) {
+                return new ItemTagData((float) data);
+            } else if (base instanceof NBTTagShort) {
+                return new ItemTagData((short) data);
+            } else if (base instanceof NBTTagLong) {
+                return new ItemTagData((long) data);
+            } else if (base instanceof NBTTagByte) {
+                return new ItemTagData((byte) data);
+            } else if (base instanceof NBTTagIntArray) {
+                return new ItemTagData((int[]) data);
+            } else if (base instanceof NBTTagByteArray) {
+                return new ItemTagData((byte[]) data);
+            }
         }
         return null;
     }
@@ -466,7 +496,7 @@ public class NMSGenericImpl extends NMSGeneric {
         if (MinecraftVersion.INSTANCE.getMajor() >= 9) {
             Object lightEngine = ((net.minecraft.server.v1_14_R1.WorldServer) world).getChunkProvider().getLightEngine();
             // 类文件具有错误的版本 60.0, 应为 52.0
-            if (new Reflex(LightEngine.class).instance(lightEngine).invoke("z_")) {
+            if ((boolean) Reflex.Companion.invokeMethod(lightEngine, "hasLightWork", new Object[0], false, true, true)) {
                 syncLight(lightEngine, e -> {
                     if (lightType == LightType.BLOCK) {
                         ((LightEngineLayer) ((net.minecraft.server.v1_14_R1.LightEngineThreaded) lightEngine).a(EnumSkyBlock.BLOCK)).a(Integer.MAX_VALUE, true, true);
@@ -570,7 +600,8 @@ public class NMSGenericImpl extends NMSGeneric {
             Object chunk2 = ((net.minecraft.server.v1_8_R3.EntityPlayer) human).getWorld().getChunkAtWorldCoords(((net.minecraft.server.v1_8_R3.EntityPlayer) human).getChunkCoordinates());
             if (distance(chunk2, chunk1) < distance(human)) {
                 net.minecraft.server.v1_16_R1.IChunkProvider chunkProvider = ((net.minecraft.server.v1_16_R1.Chunk) chunk1).getWorld().getChunkProvider();
-                net.minecraft.server.v1_16_R1.PlayerChunk playerChunk = Reflex.Companion.invokeMethod(chunkProvider, "getChunk", new Object[]{net.minecraft.server.v1_16_R1.ChunkCoordIntPair.pair(chunk.getX(), chunk.getZ())}, false);
+                Object[] params = {net.minecraft.server.v1_16_R1.ChunkCoordIntPair.pair(chunk.getX(), chunk.getZ())};
+                net.minecraft.server.v1_16_R1.PlayerChunk playerChunk = Reflex.Companion.invokeMethod(chunkProvider, "getChunk", params, false, true, true);
                 BitSet skyChangedLightSectionFilter = new BitSet();
                 BitSet blockChangedLightSectionFilter = new BitSet();
                 if (lightType == LightType.BLOCK) {
@@ -600,11 +631,13 @@ public class NMSGenericImpl extends NMSGeneric {
     @NotNull
     public String getEnchantmentKey(Enchantment enchantment) {
         if (MinecraftVersion.INSTANCE.getMajor() > 5) {
-            return "enchantment.minecraft." + new Reflex(Keyed.class).instance(enchantment).<NamespacedKey>invoke("getKey").getKey();
+            NamespacedKey key = (NamespacedKey) Reflex.Companion.invokeMethod(enchantment, "getKey", new Object[0], false, true, true);
+            return "enchantment.minecraft." + key.getKey();
         } else if (MinecraftVersion.INSTANCE.getMajor() == 5) {
-            return net.minecraft.server.v1_13_R2.IRegistry.ENCHANTMENT.fromId(new Reflex(Enchantment.class).instance(enchantment).get("id")).g();
+            int id = (int) Reflex.Companion.invokeMethod(enchantment, "id", new Object[0], false, true, true);
+            return net.minecraft.server.v1_13_R2.IRegistry.ENCHANTMENT.fromId(id).g();
         } else {
-            Map<String, Enchantment> byName = new Reflex(Enchantment.class).get("byName");
+            Map<String, Enchantment> byName = Reflex.Companion.getProperty(Enchantment.class, "byName", true, false, true);
             for (Map.Entry<String, Enchantment> entry : byName.entrySet()) {
                 if (entry == enchantment) {
                     return "enchantment.minecraft." + entry.getKey();
@@ -618,7 +651,7 @@ public class NMSGenericImpl extends NMSGeneric {
     @NotNull
     public String getPotionEffectTypeKey(PotionEffectType potionEffectType) {
         if (MinecraftVersion.INSTANCE.isUniversal()) {
-            Registry<MobEffectList> registry = Reflex.Companion.getProperty(MinecraftServerUtilKt.nmsClass("IRegistry"), "MOB_EFFECT", true);
+            Registry<MobEffectList> registry = Reflex.Companion.getProperty(MinecraftServerUtilKt.nmsClass("IRegistry"), "MOB_EFFECT", true, false, true);
             return registry.fromId(potionEffectType.getId()).c();
         }
         if (MinecraftVersion.INSTANCE.getMajor() >= 5) {
@@ -683,11 +716,11 @@ public class NMSGenericImpl extends NMSGeneric {
             Object b;
             AtomicInteger c;
             if (MinecraftVersion.INSTANCE.getMajor() >= 9) {
-                b = new Reflex(LightEngineThreaded.class).instance(lightEngine).get("taskMailbox");
-                c = new Reflex(ThreadedMailbox.class).instance(b).get("status");
+                b = Reflex.Companion.getProperty(lightEngine, "taskMailbox", false, true, true);
+                c = Reflex.Companion.getProperty(b, "status", false, true, true);
             } else {
-                b = new Reflex(LightEngineThreaded.class).instance(lightEngine).get("b");
-                c = new Reflex(ThreadedMailbox.class).instance(b).get("c");
+                b = Reflex.Companion.getProperty(lightEngine, "b", false, true, true);
+                c = Reflex.Companion.getProperty(b, "c", false, true, true);
             }
             int flags;
             long wait = -1L;
@@ -710,7 +743,7 @@ public class NMSGenericImpl extends NMSGeneric {
             } finally {
                 while (!c.compareAndSet(flags = c.get(), flags & ~2)) {
                 }
-                new Reflex(ThreadedMailbox.class).instance(b).invoke("f");
+                Reflex.Companion.getProperty(b, "f", false, true, true);
             }
         } catch (Throwable t) {
             t.printStackTrace();
@@ -735,17 +768,18 @@ public class NMSGenericImpl extends NMSGeneric {
         } else if (((LightEngineLayer) lightEngineLayer).a(SectionPosition.a((net.minecraft.server.v1_14_R1.BlockPosition) position)) != null) {
             try {
                 if (MinecraftVersion.INSTANCE.getMajor() >= 9) {
-                    Object s = new Reflex(LightEngineLayer.class).instance(lightEngineLayer).get("storage");
-                    new Reflex(LightEngineStorage.class).instance(s).invoke("e");
+                    Object s = Reflex.Companion.getProperty(lightEngineLayer, "storage", false, true, true);
+                    Reflex.Companion.invokeMethod(s, "e", new Object[0], false, true, true);
                 } else {
-                    Object s = new Reflex(LightEngineLayer.class).instance(lightEngineLayer).get("c");
+                    Object s = Reflex.Companion.getProperty(lightEngineLayer, "c", false, true, true);
                     if (MinecraftVersion.INSTANCE.getMajor() >= 7) {
-                        new Reflex(LightEngineStorage.class).instance(s).invoke("d");
+                        Reflex.Companion.invokeMethod(s, "d", new Object[0], false, true, true);
                     } else {
-                        new Reflex(LightEngineStorage.class).instance(s).invoke("c");
+                        Reflex.Companion.invokeMethod(s, "c", new Object[0], false, true, true);
                     }
                 }
-                new Reflex(LightEngineGraph.class).instance(lightEngineLayer).invoke("a", 9223372036854775807L, ((net.minecraft.server.v1_14_R1.BlockPosition) position).asLong(), 15 - level, true);
+                Object[] params = new Object[] { 9223372036854775807L, ((net.minecraft.server.v1_14_R1.BlockPosition) position).asLong(), 15 - level, true };
+                Reflex.Companion.invokeMethod(lightEngineLayer, "a", params, false, true, true);
             } catch (Throwable t) {
                 t.printStackTrace();
             }

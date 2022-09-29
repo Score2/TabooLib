@@ -10,11 +10,12 @@ import org.bukkit.material.MaterialData
 import taboolib.common.platform.ProxyGameMode
 import taboolib.common.platform.ProxyParticle
 import taboolib.common.platform.ProxyPlayer
-import taboolib.common.reflect.Reflex.Companion.getProperty
-import taboolib.common.reflect.Reflex.Companion.invokeMethod
-import taboolib.common.reflect.Reflex.Companion.setProperty
+import org.tabooproject.reflex.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.invokeMethod
+import org.tabooproject.reflex.Reflex.Companion.setProperty
 import taboolib.common.util.Location
 import taboolib.common.util.Vector
+import taboolib.common.util.unsafeLazy
 import taboolib.platform.util.toBukkitLocation
 import taboolib.platform.util.toProxyLocation
 import java.net.InetSocketAddress
@@ -27,25 +28,26 @@ import java.util.*
  * @author sky
  * @since 2021/6/17 10:33 下午
  */
+@Suppress("HasPlatformType")
 class BukkitPlayer(val player: Player) : ProxyPlayer {
 
-    val legacyVersion by lazy {
+    val legacyVersion by unsafeLazy {
         Bukkit.getServer().javaClass.name.split('.')[3]
     }
 
-    val rChatCompoundText by lazy {
+    val rChatCompoundText by unsafeLazy {
         nmsClass("ChatComponentText").getDeclaredConstructor(String::class.java)
     }
 
-    val rPacketPlayOutTitle by lazy {
+    val rPacketPlayOutTitle by unsafeLazy {
         nmsClass("PacketPlayOutTitle").getDeclaredConstructor()
     }
 
-    val rEnumTitleAction by lazy {
+    val rEnumTitleAction by unsafeLazy {
         nmsClass("PacketPlayOutTitle\$EnumTitleAction").enumConstants
     }
 
-    val rPacketPlayOutChat by lazy {
+    val rPacketPlayOutChat by unsafeLazy {
         nmsClass("PacketPlayOutChat").getDeclaredConstructor()
     }
 
@@ -368,14 +370,22 @@ class BukkitPlayer(val player: Player) : ProxyPlayer {
     }
 
     override fun sendParticle(particle: ProxyParticle, location: Location, offset: Vector, count: Int, speed: Double, data: ProxyParticle.Data?) {
-        try {
-            val bukkitParticle = Particle.valueOf(particle.name)
-            player.spawnParticle(bukkitParticle, location.toBukkitLocation(), count, offset.x, offset.y, offset.z, speed, when (data) {
-                is ProxyParticle.DustData -> {
-                    Particle.DustOptions(Color.fromRGB(data.color.rgb), data.size)
-                }
+        val bukkitParticle = try {
+            Particle.valueOf(particle.name)
+        } catch (ignored: IllegalArgumentException) {
+            error("Unsupported particle ${particle.name}")
+        }
+        player.spawnParticle(
+            bukkitParticle, location.toBukkitLocation(), count, offset.x, offset.y, offset.z, speed, when (data) {
                 is ProxyParticle.DustTransitionData -> {
-                    Particle.DustTransition(Color.fromRGB(data.color.rgb), Color.fromRGB(data.toColor.rgb), data.size)
+                    Particle.DustTransition(
+                        Color.fromRGB(data.color.red, data.color.green, data.color.blue),
+                        Color.fromRGB(data.toColor.red, data.toColor.blue, data.toColor.green),
+                        data.size
+                    )
+                }
+                is ProxyParticle.DustData -> {
+                    Particle.DustOptions(Color.fromRGB(data.color.red, data.color.green, data.color.blue), data.size)
                 }
                 is ProxyParticle.ItemData -> {
                     val item = ItemStack(Material.valueOf(data.material))
@@ -400,21 +410,21 @@ class BukkitPlayer(val player: Player) : ProxyPlayer {
                     }
                 }
                 is ProxyParticle.VibrationData -> {
-                    Vibration(data.origin.toBukkitLocation(), when (val destination = data.destination) {
-                        is ProxyParticle.VibrationData.LocationDestination -> {
-                            Vibration.Destination.BlockDestination(destination.location.toBukkitLocation())
-                        }
-                        is ProxyParticle.VibrationData.EntityDestination -> {
-                            Vibration.Destination.EntityDestination(Bukkit.getEntity(destination.entity)!!)
-                        }
-                        else -> error("out of case")
-                    }, data.arrivalTime)
+                    Vibration(
+                        data.origin.toBukkitLocation(), when (val destination = data.destination) {
+                            is ProxyParticle.VibrationData.LocationDestination -> {
+                                Vibration.Destination.BlockDestination(destination.location.toBukkitLocation())
+                            }
+                            is ProxyParticle.VibrationData.EntityDestination -> {
+                                Vibration.Destination.EntityDestination(Bukkit.getEntity(destination.entity)!!)
+                            }
+                            else -> error("out of case")
+                        }, data.arrivalTime
+                    )
                 }
                 else -> null
-            })
-        } catch (ignored: IllegalArgumentException) {
-            error("Unsupported particle ${particle.name}")
-        }
+            }
+        )
     }
 
     override fun performCommand(command: String): Boolean {

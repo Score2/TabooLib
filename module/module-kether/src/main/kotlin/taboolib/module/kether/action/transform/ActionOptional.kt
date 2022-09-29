@@ -1,11 +1,7 @@
 package taboolib.module.kether.action.transform
 
-import taboolib.library.kether.ArgTypes
 import taboolib.library.kether.ParsedAction
-import taboolib.module.kether.KetherParser
-import taboolib.module.kether.ScriptAction
-import taboolib.module.kether.ScriptFrame
-import taboolib.module.kether.scriptParser
+import taboolib.module.kether.*
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -19,28 +15,26 @@ class ActionOptional(val value: ParsedAction<*>, val elseOf: ParsedAction<*>) : 
 
     override fun run(frame: ScriptFrame): CompletableFuture<Any> {
         val future = CompletableFuture<Any>()
-        frame.newFrame(value).run<Any>().thenApply {
+        frame.run(value).thenAccept {
             if (it != null) {
                 future.complete(it)
             } else {
-                frame.newFrame(elseOf).run<Any>().thenApply { elseOf ->
-                    future.complete(elseOf)
-                }
+                frame.run(elseOf).thenAccept { elseOf -> future.complete(elseOf) }
             }
         }
         return future
     }
 
-    internal object Parser {
+    object Parser {
 
         /**
          * optional null else 123
          */
         @KetherParser(["optional"])
         fun parser() = scriptParser {
-            ActionOptional(it.next(ArgTypes.ACTION), it.run {
+            ActionOptional(it.nextParsedAction(), it.run {
                 it.expect("else")
-                it.next(ArgTypes.ACTION)
+                it.nextParsedAction()
             })
         }
     }

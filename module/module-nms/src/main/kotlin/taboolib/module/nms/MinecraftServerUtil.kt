@@ -1,13 +1,18 @@
 package taboolib.module.nms
 
 import org.bukkit.entity.Player
-import taboolib.common.io.runningClasses
-import taboolib.common.platform.function.info
-import taboolib.common.reflect.Reflex.Companion.getProperty
-import taboolib.common.reflect.Reflex.Companion.invokeMethod
+import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.event.player.PlayerQuitEvent
+import taboolib.common.io.runningClassMap
+import taboolib.common.platform.event.SubscribeEvent
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 val nmsProxyMap = ConcurrentHashMap<String, Any>()
+
+private val packetPool = ConcurrentHashMap<String, ExecutorService>()
 
 fun obcClass(name: String): Class<*> {
     return Class.forName("org.bukkit.craftbukkit.${MinecraftVersion.minecraftVersion}.$name")
@@ -26,9 +31,9 @@ fun <T> nmsProxy(clazz: Class<T>, bind: String = "{name}Impl"): T {
     return nmsProxyMap.computeIfAbsent("${clazz.name}:$bind") {
         val bindClass = bind.replace("{name}", clazz.name)
         val instance = AsmClassTransfer(bindClass).run().getDeclaredConstructor().newInstance()
-        runningClasses.forEach {
-            if (it.name.startsWith("$bindClass\$")) {
-                AsmClassTransfer(it.name).run()
+        runningClassMap.forEach { (name, _) ->
+            if (name.startsWith("$bindClass\$")) {
+                AsmClassTransfer(name).run()
             }
         }
         instance
@@ -40,12 +45,41 @@ inline fun <reified T> nmsProxy(bind: String = "{name}Impl"): T {
 }
 
 /**
+ * 向玩家发送数据包（异步）
+ */
+fun Player.sendPacket(packet: Any): CompletableFuture<Unit> {
+    val future = CompletableFuture<Unit>()
+    val pool = packetPool.computeIfAbsent(name) { Executors.newSingleThreadExecutor() }
+    pool.submit {
+        try {
+            future.complete(sendPacketBlocking(packet))
+        } catch (e: Throwable) {
+            future.completeExceptionally(e)
+            e.printStackTrace()
+        }
+    }
+    return future
+}
+
+/**
  * 向玩家发送数据包
  */
-fun Player.sendPacket(packet: Any) {
-    if (MinecraftVersion.isUniversal) {
-        getProperty<Any>("entity/connection")!!.invokeMethod<Any>("sendPacket", packet)
-    } else {
-        getProperty<Any>("entity/playerConnection")!!.invokeMethod<Any>("sendPacket", packet)
+fun Player.sendPacketBlocking(packet: Any) {
+    PacketSender.sendPacket(this, packet)
+}
+
+/**
+ * 监听器
+ */
+private object PoolListener {
+
+    @SubscribeEvent
+    private fun onJoin(e: PlayerJoinEvent) {
+        packetPool.computeIfAbsent(e.player.name) { Executors.newSingleThreadExecutor() }
+    }
+
+    @SubscribeEvent
+    private fun onQuit(e: PlayerQuitEvent) {
+        packetPool.remove(e.player.name)?.shutdownNow()
     }
 }

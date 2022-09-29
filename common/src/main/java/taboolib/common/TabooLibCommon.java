@@ -4,9 +4,17 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import taboolib.common.env.RuntimeDependency;
 import taboolib.common.env.RuntimeEnv;
-import taboolib.common.inject.RuntimeInjector;
+import taboolib.common.inject.VisitorHandler;
 import taboolib.common.platform.Platform;
 import taboolib.common.platform.PlatformFactory;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * TabooLib
@@ -18,28 +26,37 @@ import taboolib.common.platform.PlatformFactory;
 @RuntimeDependency(value = "!com.google.code.gson:gson:2.8.7", test = "!com.google.gson.JsonElement")
 public class TabooLibCommon {
 
-    /**
-     * 保存最近一次初始化的运行环境
-     */
-    private static Platform platform = Platform.APPLICATION;
+    /** 当前插件文件名 **/
+    private static String runningFileName = "TabooLib";
 
-    /**
-     * 是否停止加载
-     */
-    private static boolean stopped = false;
+    /** 当前运行环境 **/
+    private static Platform runningPlatform = Platform.APPLICATION;
 
-    /**
-     * 是否被 Paper 核心拦截控制台打印
-     */
-    private static boolean sysoutCatcherFound = false;
+    /** 当前生命周期 **/
+    private static LifeCycle currentLifeCycle = LifeCycle.CONST;
 
-    private static boolean init = false;
+    /** 是否停止加载 **/
+    private static boolean isStopped = false;
+
+    /** Kotlin 环境是否就绪 **/
+    private static boolean isKotlinLoaded = false;
+
+    /** 是否被 Paper 核心拦截控制台打印 **/
+    private static boolean isSysoutCatcherFound = false;
+
+    /** 推迟任务 **/
+    private static final Map<LifeCycle, List<Runnable>> postponeExecutor = new ConcurrentHashMap<>();
 
     static {
+        // 获取插件文件
         try {
-            // 无法理解 paper 的伞兵行为
+            runningFileName = new File(TabooLibCommon.class.getProtectionDomain().getCodeSource().getLocation().getFile()).getName();
+        } catch (Throwable ignored) {
+        }
+        // 检查 Paper 核心控制台拦截工具
+        try {
             Class.forName("io.papermc.paper.logging.SysoutCatcher");
-            sysoutCatcherFound = true;
+            isSysoutCatcherFound = true;
         } catch (ClassNotFoundException ignored) {
         }
     }
@@ -64,6 +81,17 @@ public class TabooLibCommon {
     }
 
     /**
+     * 推迟任务到指定生命周期下执行
+     */
+    public static void postpone(LifeCycle lifeCycle, Runnable runnable) {
+        if (lifeCycle.ordinal() >= TabooLibCommon.currentLifeCycle.ordinal()) {
+            runnable.run();
+        } else {
+            postponeExecutor.computeIfAbsent(lifeCycle, k -> new ArrayList<>()).add(runnable);
+        }
+    }
+
+    /**
      * 触发生命周期
      */
     public static void lifeCycle(LifeCycle lifeCycle) {
@@ -77,58 +105,97 @@ public class TabooLibCommon {
      * @param lifeCycle 生命周期
      */
     public static void lifeCycle(LifeCycle lifeCycle, @Nullable Platform platform) {
-        if (stopped) {
+        if (isStopped) {
             return;
         }
+        // 记录运行环境
         if (platform != null) {
-            TabooLibCommon.platform = platform;
+            runningPlatform = platform;
         }
+        // 记录生命周期
+        currentLifeCycle = lifeCycle;
+        // 运行推迟任务
+        postponeExecutor.forEach((cycle, list) -> {
+            if (cycle == lifeCycle) {
+                list.forEach((runnable) -> {
+                    try {
+                        runnable.run();
+                    } catch (Throwable t) {
+                        t.printStackTrace();
+                    }
+                });
+                postponeExecutor.remove(cycle);
+            }
+        });
+        // 开发者模式下打印生命周期
+        if (isDevelopmentMode()) {
+            TabooLibCommon.print("LifeCycle: " + lifeCycle);
+        }
+        // 检查生命周期
         switch (lifeCycle) {
-            case CONST:
+            case CONST: {
+                // 加载运行环境
+                // 初始化 RuntimeEnv 模块
                 try {
+                    if (TabooLibCommon.isDevelopmentMode()) {
+                        TabooLibCommon.print("RuntimeEnv setup...");
+                    }
                     RuntimeEnv.ENV.setup();
                 } catch (NoClassDefFoundError ignored) {
-                }
-                if (isKotlinEnvironment()) {
-                    init = true;
-                    PlatformFactory.INSTANCE.init();
-                    RuntimeInjector.injectAll(LifeCycle.CONST);
-                }
-                break;
-            case INIT:
-                if (init) {
-                    RuntimeInjector.injectAll(LifeCycle.INIT);
-                }
-                break;
-            case LOAD:
-                if (!init) {
-                    if (isKotlinEnvironment()) {
-                        init = true;
-                        PlatformFactory.INSTANCE.init();
-                        RuntimeInjector.injectAll(LifeCycle.CONST);
-                        RuntimeInjector.injectAll(LifeCycle.INIT);
-                    } else {
-                        stopped = true;
-                        throw new RuntimeException("Runtime environment setup failed, please feedback!");
+                    if (TabooLibCommon.isDevelopmentMode()) {
+                        TabooLibCommon.print("RuntimeEnv not found.");
                     }
                 }
-                RuntimeInjector.injectAll(LifeCycle.LOAD);
+                // Kotlin 环境已就绪
+                if (TabooLibCommon.isKotlinEnvironment()) {
+                    isKotlinLoaded = true;
+                    PlatformFactory.INSTANCE.init();
+                    VisitorHandler.injectAll(LifeCycle.CONST);
+                }
                 break;
-            case ENABLE:
-                RuntimeInjector.injectAll(LifeCycle.ENABLE);
+            }
+            case INIT: {
+                if (isKotlinLoaded) {
+                    // 依赖注入
+                    VisitorHandler.injectAll(LifeCycle.INIT);
+                }
                 break;
-            case ACTIVE:
-                RuntimeInjector.injectAll(LifeCycle.ACTIVE);
+            }
+            case LOAD: {
+                // 若在 CONST 生命周期中未加载 Kotlin 环境，则尝试重新检测并再次启动
+                if (!isKotlinLoaded) {
+                    if (isKotlinEnvironment()) {
+                        isKotlinLoaded = true;
+                        PlatformFactory.INSTANCE.init();
+                        VisitorHandler.injectAll(LifeCycle.CONST);
+                        VisitorHandler.injectAll(LifeCycle.INIT);
+                    } else {
+                        isStopped = true;
+                        String testClass = "kotlin.Lazy";
+                        throw new RuntimeException("Runtime environment setup failed, please feedback! (test: " + testClass + ", " + "classloader: " + TabooLibCommon.class.getClassLoader() + ")");
+                    }
+                }
+                VisitorHandler.injectAll(LifeCycle.LOAD);
                 break;
-            case DISABLE:
-                RuntimeInjector.injectAll(LifeCycle.DISABLE);
+            }
+            case ENABLE: {
+                VisitorHandler.injectAll(LifeCycle.ENABLE);
+                break;
+            }
+            case ACTIVE: {
+                VisitorHandler.injectAll(LifeCycle.ACTIVE);
+                break;
+            }
+            case DISABLE: {
+                VisitorHandler.injectAll(LifeCycle.DISABLE);
                 PlatformFactory.INSTANCE.cancel();
                 break;
+            }
         }
     }
 
     /**
-     * 当前是否存在 Kotlin 运行环境
+     * 检查当前 Kotlin 环境是否有效
      */
     public static boolean isKotlinEnvironment() {
         try {
@@ -140,28 +207,57 @@ public class TabooLibCommon {
     }
 
     /**
-     * 当前运行平台
+     * 检查当前是否处于开发者模式
+     */
+    public static boolean isDevelopmentMode() {
+        return new File("dev").exists();
+    }
+
+    /**
+     * 获取当前运行平台
      */
     @NotNull
     public static Platform getRunningPlatform() {
-        return platform;
+        return runningPlatform;
+    }
+
+    /**
+     * 获取当前生命周期
+     */
+    @NotNull
+    public static LifeCycle getLifeCycle() {
+        return currentLifeCycle;
+    }
+
+    /**
+     * 是否被 Paper 核心拦截控制台打印
+     */
+    public static boolean isSysoutCatcherFound() {
+        return isSysoutCatcherFound;
     }
 
     /**
      * 是否停止 TabooLib 及插件加载流程
      */
     public static boolean isStopped() {
-        return stopped;
+        return isStopped;
     }
 
     /**
      * 停止 TabooLib 及插件加载流程
      */
     public static void setStopped(boolean value) {
-        stopped = value;
+        isStopped = value;
     }
 
-    public static boolean isSysoutCatcherFound() {
-        return sysoutCatcherFound;
+    /**
+     * 控制台输出
+     */
+    public static void print(Object message) {
+        if (TabooLibCommon.isSysoutCatcherFound()) {
+            Logger.getLogger(runningFileName).info(Objects.toString(message));
+        } else {
+            System.out.println(message);
+        }
     }
 }

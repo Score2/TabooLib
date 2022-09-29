@@ -18,11 +18,12 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.util.*;
-import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 /**
  * The class that contains all of the methods needed for downloading and
@@ -31,9 +32,8 @@ import java.util.jar.JarFile;
  * @author Zach Deibert, sky
  * @since 1.0.0
  */
+@SuppressWarnings("UnusedReturnValue")
 public class DependencyDownloader extends AbstractXmlParser {
-
-    private static boolean notify = false;
 
     /**
      * A set of all of the dependencies that have already been injected into the
@@ -47,7 +47,7 @@ public class DependencyDownloader extends AbstractXmlParser {
 
     private final Set<Repository> repositories = new HashSet<>();
 
-    private final Set<Relocation> relocation = new HashSet<>();
+    private final Set<JarRelocation> relocation = new HashSet<>();
 
     /**
      * The directory to download and store artifacts in
@@ -72,12 +72,21 @@ public class DependencyDownloader extends AbstractXmlParser {
 
     private boolean ignoreOptional = true;
 
+    private boolean ignoreException = false;
+
+    private boolean isTransitive = true;
+
     public DependencyDownloader() {
     }
 
-    public DependencyDownloader(@Nullable List<Relocation> relocation) {
+    public DependencyDownloader(@Nullable File baseDir) {
+        this.baseDir = baseDir;
+    }
+
+    public DependencyDownloader(@Nullable File baseDir, @Nullable List<JarRelocation> relocation) {
+        this.baseDir = baseDir;
         if (relocation != null) {
-            for (Relocation rel : relocation) {
+            for (JarRelocation rel : relocation) {
                 if (rel != null) {
                     this.relocation.add(rel);
                 }
@@ -107,23 +116,16 @@ public class DependencyDownloader extends AbstractXmlParser {
             }
             File file = dep.getFile(baseDir, "jar");
             if (file.exists()) {
-                if (isDebugMode && !notify) {
-                    notify = true;
-                    if (TabooLibCommon.isSysoutCatcherFound()) {
-                        if (System.console() != null) {
-                            System.console().printf("Loading libraries, please wait...\n");
-                        }
-                    } else {
-                        System.out.println("Loading libraries, please wait...");
-                    }
-                }
+                TabooLibCommon.print(String.format("Loading library %s:%s:%s", dep.getGroupId(), dep.getArtifactId(), dep.getVersion()));
                 if (relocation.isEmpty()) {
                     ClassAppender.addPath(file.toPath());
                 } else {
-                    File rel = new File(file.getPath() + ".rel");
+                    File rel = new File(file.getPath() + "-" + relocation.hashCode() + ".jar");
                     if (!rel.exists() || rel.length() == 0) {
                         try {
-                            new JarRelocator(copyFile(file, File.createTempFile(file.getName(), ".jar")), rel, relocation).run();
+                            TabooLibCommon.print("Relocating ...");
+                            List<Relocation> relocations = relocation.stream().map(JarRelocation::toRelocation).collect(Collectors.toList());
+                            new JarRelocator(copyFile(file, File.createTempFile(file.getName(), ".jar")), rel, relocations).run();
                         } catch (IOException e) {
                             throw new IllegalStateException(String.format("Unable to relocate %s%n", dep), e);
                         }
@@ -132,7 +134,13 @@ public class DependencyDownloader extends AbstractXmlParser {
                 }
                 injectedDependencies.add(dep);
             } else {
-                throw new RuntimeException("Runtime not exist: " + file);
+                try {
+                    loadDependency(repositories, dep);
+                    injectClasspath(Collections.singleton(dep));
+                } catch (IOException e) {
+                    TabooLibCommon.setStopped(true);
+                    throw new IllegalStateException("Unable to load dependency: " + dep, e);
+                }
             }
         }
     }
@@ -147,7 +155,7 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @throws IOException If an I/O error has occurred
      * @since 1.0.0
      */
-    public Set<Dependency> download(Collection<Repository> repositories, Dependency dependency) throws IOException {
+    public Set<Dependency> loadDependency(Collection<Repository> repositories, Dependency dependency) throws IOException {
         if (dependency.getVersion() == null) {
             IOException e = null;
             for (Repository repo : repositories) {
@@ -187,10 +195,10 @@ public class DependencyDownloader extends AbstractXmlParser {
         File jar1 = new File(jar.getPath() + ".sha1");
         Set<Dependency> downloaded = new HashSet<>();
         downloaded.add(dependency);
-        if (pom.exists() && pom1.exists() && jar.exists() && jar1.exists() && readFileHash(pom).equals(readFile(pom1)) && readFileHash(jar).equals(readFile(jar1))) {
+        if (pom.exists() && pom1.exists() && jar.exists() && jar1.exists() && readFile(pom1).startsWith(readFileHash(pom)) && readFile(jar1).startsWith(readFileHash(jar))) {
             downloadedDependencies.add(dependency);
             if (pom.exists()) {
-                downloaded.addAll(download(pom.toURI().toURL().openStream()));
+                downloaded.addAll(loadDependencyFromInputStream(pom.toURI().toURL().openStream()));
             }
             return downloaded;
         }
@@ -230,7 +238,7 @@ public class DependencyDownloader extends AbstractXmlParser {
                     }
                 }
                 if (pom.exists()) {
-                    downloaded.addAll(download(pom.toURI().toURL().openStream()));
+                    downloaded.addAll(loadDependencyFromInputStream(pom.toURI().toURL().openStream()));
                 }
                 e = null;
                 break;
@@ -257,11 +265,11 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @throws IOException If an I/O error has occurred
      * @since 1.0.0
      */
-    public Set<Dependency> download(List<Repository> repositories, List<Dependency> dependencies) throws IOException {
+    public Set<Dependency> loadDependency(List<Repository> repositories, List<Dependency> dependencies) throws IOException {
         createBaseDir();
         Set<Dependency> downloaded = new HashSet<>();
         for (Dependency dep : dependencies) {
-            downloaded.addAll(download(repositories, dep));
+            downloaded.addAll(loadDependency(repositories, dep));
         }
         return downloaded;
     }
@@ -275,7 +283,7 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @throws IOException If an I/O error has occurred
      * @since 1.0.0
      */
-    public Set<Dependency> download(Document pom, DependencyScope... scopes) throws IOException {
+    public Set<Dependency> loadDependencyFromPom(Document pom, DependencyScope... scopes) throws IOException {
         List<Dependency> dependencies = new ArrayList<>();
         Set<DependencyScope> scopeSet = new HashSet<>(Arrays.asList(scopes));
         NodeList nodes = pom.getDocumentElement().getChildNodes();
@@ -298,22 +306,26 @@ public class DependencyDownloader extends AbstractXmlParser {
         } catch (ParseException ex) {
             throw new IOException("Unable to parse repositories", ex);
         }
-        nodes = pom.getElementsByTagName("dependency");
-        try {
-            for (int i = 0; i < nodes.getLength(); ++i) {
-                // ignore optional
-                if (ignoreOptional && find("optional", (Element) nodes.item(i), "false").equals("true")) {
-                    continue;
+        if (isTransitive) {
+            nodes = pom.getElementsByTagName("dependency");
+            try {
+                for (int i = 0; i < nodes.getLength(); ++i) {
+                    // ignore optional
+                    if (ignoreOptional && find("optional", (Element) nodes.item(i), "false").equals("true")) {
+                        continue;
+                    }
+                    Dependency dep = new Dependency((Element) nodes.item(i));
+                    if (scopeSet.contains(dep.getScope())) {
+                        dependencies.add(dep);
+                    }
                 }
-                Dependency dep = new Dependency((Element) nodes.item(i));
-                if (scopeSet.contains(dep.getScope())) {
-                    dependencies.add(dep);
+            } catch (ParseException ex) {
+                if (!ignoreException) {
+                    throw new IOException("Unable to parse dependencies", ex);
                 }
             }
-        } catch (ParseException ex) {
-            throw new IOException("Unable to parse dependencies", ex);
         }
-        return download(repos, dependencies);
+        return loadDependency(repos, dependencies);
     }
 
     /**
@@ -326,8 +338,8 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @see DependencyDownloader#dependencyScopes
      * @since 1.0.0
      */
-    public Set<Dependency> download(Document pom) throws IOException {
-        return download(pom, dependencyScopes);
+    public Set<Dependency> loadDependencyFromPom(Document pom) throws IOException {
+        return loadDependencyFromPom(pom, dependencyScopes);
     }
 
     /**
@@ -340,8 +352,8 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @see DependencyDownloader#dependencyScopes
      * @since 1.0.0
      */
-    public Set<Dependency> download(InputStream pom) throws IOException {
-        return download(pom, dependencyScopes);
+    public Set<Dependency> loadDependencyFromInputStream(InputStream pom) throws IOException {
+        return loadDependencyFromInputStream(pom, dependencyScopes);
     }
 
     /**
@@ -353,12 +365,12 @@ public class DependencyDownloader extends AbstractXmlParser {
      * @throws IOException If an I/O error has occurred
      * @since 1.0.0
      */
-    public Set<Dependency> download(InputStream pom, DependencyScope... scopes) throws IOException {
+    public Set<Dependency> loadDependencyFromInputStream(InputStream pom, DependencyScope... scopes) throws IOException {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document xml = builder.parse(pom);
-            return download(xml, scopes);
+            return loadDependencyFromPom(xml, scopes);
         } catch (ParserConfigurationException ex) {
             throw new IOException("Unable to load pom.xml parser", ex);
         } catch (SAXException ex) {
@@ -414,15 +426,28 @@ public class DependencyDownloader extends AbstractXmlParser {
         return this;
     }
 
-    public Set<Relocation> getRelocation() {
+    public DependencyDownloader setIgnoreException(boolean ignoreException) {
+        this.ignoreException = ignoreException;
+        return this;
+    }
+
+    public Set<JarRelocation> getRelocation() {
         return relocation;
+    }
+
+    public boolean isTransitive() {
+        return isTransitive;
+    }
+
+    public void setTransitive(boolean transitive) {
+        isTransitive = transitive;
     }
 
     @NotNull
     public static String readFileHash(File file) {
         try {
             MessageDigest digest = MessageDigest.getInstance("sha-1");
-            try (InputStream inputStream = new FileInputStream(file)) {
+            try (InputStream inputStream = Files.newInputStream(file.toPath())) {
                 byte[] buffer = new byte[1024];
                 int total;
                 while ((total = inputStream.read(buffer)) != -1) {

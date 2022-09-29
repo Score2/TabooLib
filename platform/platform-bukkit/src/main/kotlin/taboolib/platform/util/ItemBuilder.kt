@@ -16,17 +16,17 @@ import org.bukkit.inventory.meta.*
 import org.bukkit.potion.PotionData
 import org.bukkit.potion.PotionEffect
 import taboolib.common.Isolated
-import taboolib.common.reflect.Reflex.Companion.getProperty
-import taboolib.common.reflect.Reflex.Companion.invokeMethod
-import taboolib.common.reflect.Reflex.Companion.setProperty
+import org.tabooproject.reflex.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.invokeMethod
+import org.tabooproject.reflex.Reflex.Companion.setProperty
 import taboolib.library.xseries.XMaterial
 import taboolib.library.xseries.XSkull
 import taboolib.module.chat.colored
 import java.util.*
 
-val ItemStack.isAir get() = type == Material.AIR || type.name.endsWith("_AIR")
+val ItemStack?.isAir get() = isAir()
 
-inline fun buildItem(itemStack: ItemStack, builder: ItemBuilder.() -> Unit = {}): ItemStack {
+fun buildItem(itemStack: ItemStack, builder: ItemBuilder.() -> Unit = {}): ItemStack {
     if (itemStack.isAir) {
         error("air")
     }
@@ -35,15 +35,16 @@ inline fun buildItem(itemStack: ItemStack, builder: ItemBuilder.() -> Unit = {})
 
 val XMaterial.isAir get() = this == XMaterial.AIR || this == XMaterial.CAVE_AIR || this == XMaterial.VOID_AIR
 
-inline fun buildItem(material: XMaterial, builder: ItemBuilder.() -> Unit = {}): ItemStack {
+fun buildItem(material: XMaterial, builder: ItemBuilder.() -> Unit = {}): ItemStack {
     if (material.isAir) {
         error("air")
     }
     return ItemBuilder(material).also(builder).build()
 }
 
-inline fun buildItem(material: Material, builder: ItemBuilder.() -> Unit = {}): ItemStack {
-    if (material.isAir) {
+fun buildItem(material: Material, builder: ItemBuilder.() -> Unit = {}): ItemStack {
+    // 在低版本, 并没有 Material.isAir() 方法.
+    if (material == Material.AIR) {
         error("air")
     }
     return ItemBuilder(material).also(builder).build()
@@ -118,29 +119,29 @@ open class ItemBuilder {
         }
         try {
             customModelData = itemMeta.getProperty<Int>("customModelData") ?: -1
-        } catch (ex: NoSuchFieldException) {
+        } catch (_: NoSuchFieldException) {
         }
         try {
             isUnbreakable = itemMeta.isUnbreakable
         } catch (ex: NoSuchMethodError) {
             try {
                 isUnbreakable = itemMeta.invokeMethod<Any>("spigot")!!.invokeMethod<Boolean>("isUnbreakable") ?: false
-            } catch (ex: NoSuchMethodException) {
+            } catch (_: NoSuchMethodException) {
             }
         }
         try {
             if (itemMeta is SpawnEggMeta && itemMeta.spawnedType != null) {
                 spawnType = itemMeta.spawnedType
             }
-        } catch (ex: NoClassDefFoundError) {
-        } catch (ex: UnsupportedOperationException) {
+        } catch (_: NoClassDefFoundError) {
+        } catch (_: UnsupportedOperationException) {
 
         }
         try {
             if (itemMeta is BannerMeta && itemMeta.patterns.isNotEmpty()) {
                 patterns += itemMeta.patterns
             }
-        } catch (ex: NoClassDefFoundError) {
+        } catch (_: NoClassDefFoundError) {
         }
     }
 

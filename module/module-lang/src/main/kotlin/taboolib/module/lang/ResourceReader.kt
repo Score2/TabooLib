@@ -67,7 +67,7 @@ class ResourceReader(val clazz: Class<*>, val migrate: Boolean = true) {
     fun loadNodes(file: SecuredFile, nodesMap: HashMap<String, Type>, code: String) {
         migrateLegacyVersion(file)
         file.getKeys(false).forEach { node ->
-            when (val obj = file.get(node)) {
+            when (val obj = file[node]) {
                 is String -> {
                     nodesMap[node] = TypeText(obj)
                 }
@@ -81,8 +81,7 @@ class ResourceReader(val clazz: Class<*>, val migrate: Boolean = true) {
                     })
                 }
                 is ConfigurationSection -> {
-                    val type =
-                        loadNode(obj.getValues(false).map { it.key.toString() to it.value!! }.toMap(), code, node)
+                    val type = loadNode(obj.getValues(false).map { it.key to it.value!! }.toMap(), code, node)
                     if (type != null) {
                         nodesMap[node] = type
                     }
@@ -170,7 +169,7 @@ class ResourceReader(val clazz: Class<*>, val migrate: Boolean = true) {
         // 对已有的变量进行转义
         text = text.replace("[", "\\[").replace("]", "\\]")
         val args = argSection.getKeys(false).mapNotNull { argSection.getConfigurationSection(it) }.associate { it.name to it.getValues(false) }
-        val newArgs = ArrayList<Map<String, Any>>()
+        val newArgs = ArrayList<Map<String, Any?>>()
         val matcher = legacyArgsRegex.matcher(text)
         while (matcher.find()) {
             val full = matcher.group(0)
@@ -184,8 +183,8 @@ class ResourceReader(val clazz: Class<*>, val migrate: Boolean = true) {
             text = text.replace(full, "[$display]")
             newArgs += body
         }
-        section.set("text", text)
-        section.set("args", newArgs)
+        section["text"] = text
+        section["args"] = newArgs
         return section
     }
 
@@ -193,7 +192,7 @@ class ResourceReader(val clazz: Class<*>, val migrate: Boolean = true) {
      * 获取所有键值对，同 getValues 方法。
      * 在经过 == 或是 type 时停止
      */
-    private fun ConfigurationSection.getValues(collect: HashMap<String, Any>, node: String): HashMap<String, Any> {
+    private fun ConfigurationSection.getValues(collect: HashMap<String, Any?>, node: String): HashMap<String, Any?> {
         var key = node
         if (node.isNotEmpty()) {
             key += "."

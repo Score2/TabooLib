@@ -1,5 +1,7 @@
 package taboolib.common.platform
 
+import java.io.File
+
 /**
  * TabooLib
  * taboolib.plugin.Plugin
@@ -19,5 +21,13 @@ abstract class Plugin {
     }
 
     open fun onDisable() {
+    }
+
+    open fun nativeJarFile(): File? {
+        return null
+    }
+
+    open fun nativeDataFolder(): File? {
+        return null
     }
 }

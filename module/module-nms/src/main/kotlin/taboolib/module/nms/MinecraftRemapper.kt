@@ -1,6 +1,9 @@
 package taboolib.module.nms
 
 import org.objectweb.asm.commons.Remapper
+import org.objectweb.asm.signature.SignatureReader
+import org.objectweb.asm.signature.SignatureWriter
+import taboolib.common.util.unsafeLazy
 
 /**
  * TabooLib
@@ -19,7 +22,7 @@ open class MinecraftRemapper : Remapper() {
     val obc1 = "org/bukkit/craftbukkit/v1_.*?/".toRegex()
     val obc2 = "org/bukkit/craftbukkit/${MinecraftVersion.minecraftVersion}/"
 
-    val mapping by lazy {
+    val mapping by unsafeLazy {
         MinecraftVersion.mapping
     }
 
@@ -33,6 +36,22 @@ open class MinecraftRemapper : Remapper() {
         if (MinecraftVersion.isUniversal) {
             val universal = translate(owner).replace('/', '.')
             return mapping.fields.firstOrNull { it.path == universal && it.translateName == name }?.mojangName ?: name
+        }
+        return name
+    }
+
+    override fun mapMethodName(owner: String, name: String, descriptor: String): String {
+        // 1.18
+        if (MinecraftVersion.major >= 10) {
+            val signatureWriter = object : SignatureWriter() {
+                override fun visitClassType(name: String) {
+                    super.visitClassType(translate(name))
+                }
+            }
+            SignatureReader(descriptor).accept(signatureWriter)
+            val desc = signatureWriter.toString()
+            val universal = translate(owner).replace('/', '.')
+            return mapping.methods.firstOrNull { it.path == universal && it.translateName == name && it.descriptor == desc }?.mojangName ?: name
         }
         return name
     }
@@ -65,7 +84,7 @@ open class MinecraftRemapper : Remapper() {
         } else {
             // 将高版本包名替换为低版本包名
             // net/minecraft/server/level/EntityPlayer -> net/minecraft/server/v1_17_R1/EntityPlayer
-            if (mapping.classMap.containsValue(key.replace('/', '.'))) {
+            if (mapping.classMap.containsValue(key.replace('.', '/'))) {
                 "net/minecraft/server/${MinecraftVersion.minecraftVersion}/${key.substringAfterLast('/', "")}"
             } else {
                 key.replace(nms1, nms2)

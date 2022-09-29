@@ -1,8 +1,9 @@
 package taboolib.expansion
 
-class Database(val type: Type) {
+import java.util.concurrent.ConcurrentHashMap
+import javax.sql.DataSource
 
-    val dataSource = type.host().createDataSource()
+class Database(val type: Type, val dataSource: DataSource = type.host().createDataSource()) {
 
     init {
         type.tableVar().createTable(dataSource)
@@ -14,7 +15,7 @@ class Database(val type: Type) {
             where("user" eq user)
         }.map {
             getString("key") to getString("value")
-        }.toMap(HashMap())
+        }.toMap(ConcurrentHashMap())
     }
 
     operator fun get(user: String, name: String): String? {

@@ -8,13 +8,14 @@ import taboolib.common.Isolated
 import taboolib.common.env.RuntimeDependency
 import taboolib.common.platform.ProxyCommandSender
 import taboolib.common.platform.ProxyPlayer
+import taboolib.common.platform.function.onlinePlayers
 
 /**
  * @author sky
  * @since 2018-05-26 14:42json
  */
 @RuntimeDependency(
-    value = "!net.md-5:bungeecord-chat:1.17", test = "!net.md_5.bungee.api.chat.TextComponent", repository = "https://repo2s.ptms.ink/repository/maven-public/"
+    value = "!net.md-5:bungeecord-chat:1.17", test = "!net.md_5.bungee.api.chat.TextComponent", repository = "https://repo2s.ptms.ink/repository/releases"
 )
 @Isolated
 class TellrawJson {
@@ -29,6 +30,11 @@ class TellrawJson {
         } else {
             sender.sendMessage(toLegacyText())
         }
+    }
+
+    fun broadcast(builder: TellrawJson.() -> Unit = {}) {
+        builder(this)
+        onlinePlayers().forEach { p -> sendTo(p) }
     }
 
     fun toRawMessage(): String {
@@ -50,6 +56,31 @@ class TellrawJson {
     fun append(text: String): TellrawJson {
         new()
         componentsLatest.addAll(TextComponent.fromLegacyText(text))
+        return this
+    }
+
+    fun appendTranslatable(node: String, vararg obj: Any): TellrawJson {
+        new()
+        componentsLatest.add(TranslatableComponent(node, obj))
+        return this
+    }
+
+    @Suppress("SpellCheckingInspection")
+    fun appendKeybind(keybind: String): TellrawJson {
+        new()
+        componentsLatest.add(KeybindComponent(keybind))
+        return this
+    }
+
+    fun appendScore(name: String, objective: String): TellrawJson {
+        new()
+        componentsLatest.add(ScoreComponent(name, objective))
+        return this
+    }
+
+    fun appendSelector(selector: String): TellrawJson {
+        new()
+        componentsLatest.add(SelectorComponent(selector))
         return this
     }
 
@@ -130,6 +161,10 @@ class TellrawJson {
     private fun new() {
         components.addAll(componentsLatest)
         componentsLatest.clear()
+    }
+
+    override fun toString(): String {
+        return toRawMessage()
     }
 
     companion object {

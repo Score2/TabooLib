@@ -6,20 +6,30 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.BookMeta
 import taboolib.common.Isolated
-import taboolib.common.reflect.Reflex.Companion.getProperty
-import taboolib.common.reflect.Reflex.Companion.invokeMethod
-import taboolib.common.reflect.Reflex.Companion.setProperty
+import org.tabooproject.reflex.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.invokeMethod
+import org.tabooproject.reflex.Reflex.Companion.setProperty
+import taboolib.common.util.unsafeLazy
 import taboolib.library.xseries.XMaterial
 import taboolib.module.chat.TellrawJson
 
+/**
+ * 构建一本书
+ */
 fun buildBook(builder: BookBuilder.() -> Unit = {}): ItemStack {
     return BookBuilder().also(builder).build()
 }
 
+/**
+ * 构建一本书并发送给玩家
+ */
 fun Player.sendBook(builder: BookBuilder.() -> Unit = {}) {
     sendBook(buildBook(builder))
 }
 
+/**
+ * 发送一本书给玩家
+ */
 fun Player.sendBook(itemStack: ItemStack) {
     try {
         invokeMethod<Void>("openBook", itemStack)
@@ -27,7 +37,7 @@ fun Player.sendBook(itemStack: ItemStack) {
         val itemInHand = itemInHand
         setItemInHand(itemStack)
         try {
-            val nmsItemStack = classCraftItemStack.invokeMethod<Any>("asNMSCopy", itemStack, fixed = true)
+            val nmsItemStack = classCraftItemStack.invokeMethod<Any>("asNMSCopy", itemStack, isStatic = true)
             val handle = getProperty<Any>("entity")!!
             try {
                 handle.invokeMethod<Void>("a", nmsItemStack, enumHandMainHand)
@@ -48,15 +58,15 @@ private val isUniversal = try {
     true
 }
 
-private val classCraftItemStack by lazy {
+private val classCraftItemStack by unsafeLazy {
     obcClassLegacy("inventory.CraftItemStack")
 }
 
-private val classChatSerializer by lazy {
+private val classChatSerializer by unsafeLazy {
     nmsClassLegacy("IChatBaseComponent\$ChatSerializer")
 }
 
-private val enumHandMainHand by lazy {
+private val enumHandMainHand by unsafeLazy {
     nmsClassLegacy("EnumHand").enumConstants[0]
 }
 
@@ -105,7 +115,7 @@ open class BookBuilder : ItemBuilder(XMaterial.WRITTEN_BOOK) {
                         getProperty<Boolean>("resolved")
                         pages += it.text
                     } catch (ex: NoSuchFieldException) {
-                        pages += classChatSerializer.invokeMethod<Any>("a", it.text, fixed = true)!!
+                        pages += classChatSerializer.invokeMethod<Any>("a", it.text, isStatic = true)!!
                     }
                 } else {
                     addPage(it.text)

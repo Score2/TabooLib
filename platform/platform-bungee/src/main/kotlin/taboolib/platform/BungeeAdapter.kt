@@ -4,6 +4,8 @@ import net.md_5.bungee.api.CommandSender
 import net.md_5.bungee.api.connection.ProxiedPlayer
 import taboolib.common.platform.*
 import taboolib.common.platform.service.PlatformAdapter
+import taboolib.common.util.Location
+import taboolib.common.util.unsafeLazy
 import taboolib.platform.type.BungeeCommandSender
 import taboolib.platform.type.BungeePlayer
 
@@ -18,7 +20,7 @@ import taboolib.platform.type.BungeePlayer
 @PlatformSide([Platform.BUNGEE])
 class BungeeAdapter : PlatformAdapter {
 
-    val plugin by lazy { BungeePlugin.getInstance() }
+    val plugin by unsafeLazy { BungeePlugin.getInstance() }
 
     override fun console(): ProxyCommandSender {
         return adaptCommandSender(plugin.proxy.console)
@@ -34,5 +36,17 @@ class BungeeAdapter : PlatformAdapter {
 
     override fun adaptCommandSender(any: Any): ProxyCommandSender {
         return if (any is ProxiedPlayer) adaptPlayer(any) else BungeeCommandSender(any as CommandSender)
+    }
+
+    override fun adaptLocation(any: Any): Location {
+        error("unsupported")
+    }
+
+    override fun platformLocation(location: Location): Any {
+        error("unsupported")
+    }
+
+    override fun allWorlds(): List<String> {
+        TODO("Not yet implemented")
     }
 }

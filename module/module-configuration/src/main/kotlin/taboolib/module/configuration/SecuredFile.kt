@@ -1,69 +1,10 @@
 package taboolib.module.configuration
 
-import taboolib.common.platform.function.warning
 import taboolib.library.configuration.ConfigurationSection
-import taboolib.library.configuration.InvalidConfigurationException
-import taboolib.library.configuration.YamlConfiguration
 import java.io.File
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.text.SimpleDateFormat
 
-class SecuredFile : YamlConfiguration() {
-
-    private val lock = Any()
-
-    var file: File? = null
-        private set
-
-    override fun set(path: String, value: Any?) {
-        synchronized(lock) { super.set(path, value) }
-    }
-
-    override fun saveToString(): String {
-        synchronized(lock) { return super.saveToString() }
-    }
-
-    @Throws(IOException::class)
-    fun saveToFile() {
-        save(file ?: return)
-    }
-
-    fun reload() {
-        load(file ?: return)
-    }
-
-    /**
-     * 如果文件读取失败则创建备份
-     * 以防出现不可逆的损伤
-     */
-    @Throws(InvalidConfigurationException::class)
-    override fun load(file: File) {
-        this.file = file
-        val content = file.readText(StandardCharsets.UTF_8)
-        try {
-            loadFromString(content)
-        } catch (ex: InvalidConfigurationException) {
-            if (!file.name.endsWith(".bak")) {
-                file.copyTo(File(file.parent, file.name + "_" + SimpleDateFormat("yyyyMMddHHmmss").format(System.currentTimeMillis()) + ".bak"))
-            }
-            throw ex
-        }
-    }
-
-    /**
-     * 如果文本读取失败则打印到日志
-     * 以防出现不可逆的损伤
-     */
-    @Throws(InvalidConfigurationException::class)
-    override fun loadFromString(contents: String) {
-        try {
-            super.loadFromString(contents)
-        } catch (t: InvalidConfigurationException) {
-            warning("Source: \n$contents")
-            throw t
-        }
-    }
+@Deprecated("Use Configuration")
+class SecuredFile : ConfigFile(Type.YAML.newFormat().createConfig()) {
 
     companion object {
 
@@ -87,7 +28,7 @@ class SecuredFile : YamlConfiguration() {
                 return ""
             }
             var single = false
-            val dump = YamlConfiguration()
+            val dump = SecuredFile()
             when (data) {
                 is ConfigurationSection -> {
                     data.getValues(false).forEach { (path, value) -> dump[path] = value }
@@ -121,7 +62,7 @@ class SecuredFile : YamlConfiguration() {
         fun loadConfiguration(file: File): SecuredFile {
             val config = SecuredFile()
             try {
-                config.load(file)
+                config.loadFromFile(file)
             } catch (t: Throwable) {
                 t.printStackTrace()
             }

@@ -5,7 +5,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
-import taboolib.common.platform.function.IOKt;
 import taboolib.module.porticus.Porticus;
 import taboolib.module.porticus.PorticusMission;
 import taboolib.module.porticus.common.MessageBuilder;
@@ -34,14 +33,18 @@ public class MissionBukkit extends PorticusMission {
     @Override
     public void run(@NotNull Object target) {
         super.run(target);
-        sendBukkitMessage((Player) target, command);
+        if (target instanceof Player) {
+            sendBukkitMessage((Player) target, command);
+        } else {
+            throw new IllegalStateException("target must be Player");
+        }
     }
 
     public void sendBukkitMessage(Player player, String[] command) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 for (byte[] bytes : MessageBuilder.create(command)) {
-                    player.sendPluginMessage(plugin, "porticus_" + IOKt.getPluginId().toLowerCase() + ":main", bytes);
+                    player.sendPluginMessage(plugin, Porticus.INSTANCE.getChannelId(), bytes);
                 }
             } catch (IOException e) {
                 e.printStackTrace();

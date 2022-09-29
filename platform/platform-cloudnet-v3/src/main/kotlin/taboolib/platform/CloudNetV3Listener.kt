@@ -12,7 +12,7 @@ import taboolib.common.platform.event.ProxyListener
 import taboolib.common.platform.function.getUsableEvent
 import taboolib.common.platform.function.isPlatformEvent
 import taboolib.common.platform.service.PlatformListener
-import taboolib.common.reflect.Reflex.Companion.getProperty
+import org.tabooproject.reflex.Reflex.Companion.getProperty
 
 /**
  * TabooLib
@@ -25,7 +25,7 @@ import taboolib.common.reflect.Reflex.Companion.getProperty
 @PlatformSide([Platform.CLOUDNET_V3])
 class CloudNetV3Listener : PlatformListener {
 
-    val plugin by lazy { CloudNetV3Plugin.getInstance() }
+    val plugin by unsafeLazy { CloudNetV3Plugin.getInstance() }
 
     override fun <T> registerListener(event: Class<T>, priority: EventPriority, ignoreCancelled: Boolean, func: (T) -> Unit): ProxyListener {
         error("unsupported")

@@ -1,8 +1,10 @@
 package taboolib.module.kether
 
+import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.function.warning
 import taboolib.common5.Coerce
 import taboolib.library.kether.*
+import taboolib.module.kether.action.ActionLiteral
 import java.nio.charset.StandardCharsets
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -10,6 +12,15 @@ import java.util.concurrent.CompletableFuture
 typealias Script = Quest
 
 typealias ScriptFrame = QuestContext.Frame
+
+fun <T> runKether(func: () -> T): T? {
+    try {
+        return func()
+    } catch (ex: Exception) {
+        ex.printKetherErrorMessage()
+    }
+    return null
+}
 
 fun <T> scriptParser(resolve: (QuestReader) -> QuestAction<T>): ScriptActionParser<T> {
     return ScriptActionParser(resolve)
@@ -21,6 +32,10 @@ fun String.parseKetherScript(namespace: List<String> = emptyList()): Script {
 
 fun List<String>.parseKetherScript(namespace: List<String> = emptyList()): Script {
     return joinToString("\n").parseKetherScript(namespace)
+}
+
+fun QuestContext.Frame.player(): ProxyPlayer {
+    return script().sender as? ProxyPlayer ?: error("No player selected.")
 }
 
 fun QuestContext.Frame.script(): ScriptContext {
@@ -48,47 +63,16 @@ fun Throwable.printKetherErrorMessage() {
 }
 
 fun Any?.inferType(): Any? {
-    val asInteger = asInteger(this)
-    if (asInteger.isPresent) {
-        return asInteger.get()
-    }
-    val asLong = Coerce.asLong(this)
-    if (asLong.isPresent) {
-        return asLong.get()
-    }
-    val asDouble = Coerce.asDouble(this)
-    if (asDouble.isPresent) {
-        return asDouble.get()
-    }
-    val asBoolean = Coerce.asBoolean(this)
-    if (asBoolean.isPresent) {
-        return asBoolean.get()
-    }
+    if (this !is String) return this
+    toIntOrNull()?.let { return it }
+    toLongOrNull()?.let { return it }
+    toDoubleOrNull()?.let { return it }
+    toBooleanStrictOrNull()?.let { return it }
     return this
 }
 
-private fun asInteger(obj: Any?): Optional<Int> {
-    return when (obj) {
-        null -> {
-            Optional.empty()
-        }
-        is Number -> {
-            Optional.of(obj.toInt())
-        }
-        else -> {
-            try {
-                Optional.ofNullable(Integer.valueOf(obj.toString()))
-            } catch (ignored: NumberFormatException) {
-                Optional.empty()
-            }
-        }
-    }
-}
-
 fun ScriptContext.extend(map: Map<String, Any?>) {
-    rootFrame().variables().run {
-        map.forEach { (k, v) -> set(k, v) }
-    }
+    rootFrame().variables().run { map.forEach { (k, v) -> set(k, v) } }
 }
 
 fun QuestReader.expects(vararg args: String): String {
@@ -115,7 +99,7 @@ fun QuestReader.switch(func: ExpectDSL.() -> Unit): ScriptAction<*> {
     }
 }
 
-fun actionNow(name: String = "kether-action-del", func: QuestContext.Frame.() -> Any?): ScriptAction<Any?> {
+fun actionNow(name: String = "kether-action-dsl", func: QuestContext.Frame.() -> Any?): ScriptAction<Any?> {
     return object : ScriptAction<Any?>() {
 
         override fun run(frame: ScriptFrame): CompletableFuture<Any?> {
@@ -128,7 +112,21 @@ fun actionNow(name: String = "kether-action-del", func: QuestContext.Frame.() ->
     }
 }
 
-fun actionFuture(name: String = "kether-action-del", func: QuestContext.Frame.(CompletableFuture<Any?>) -> Any?): ScriptAction<Any?> {
+@Suppress("UNCHECKED_CAST")
+fun actionTake(name: String = "kether-action-dsl", func: QuestContext.Frame.() -> CompletableFuture<*>): ScriptAction<Any?> {
+    return object : ScriptAction<Any?>() {
+
+        override fun run(frame: ScriptFrame): CompletableFuture<Any?> {
+            return func(frame) as CompletableFuture<Any?>
+        }
+
+        override fun toString(): String {
+            return "KetherDSL($name)"
+        }
+    }
+}
+
+fun actionFuture(name: String = "kether-action-dsl", func: QuestContext.Frame.(CompletableFuture<Any?>) -> Any?): ScriptAction<Any?> {
     return object : ScriptAction<Any?>() {
 
         override fun run(frame: ScriptFrame): CompletableFuture<Any?> {
@@ -221,4 +219,40 @@ fun Any.isInt(): Boolean {
     } catch (ex: Exception) {
         false
     }
+}
+
+fun literalAction(any: Any): ParsedAction<*> {
+    return ParsedAction(ActionLiteral<Any>(any))
+}
+
+fun QuestContext.Frame.run(action: ParsedAction<*>): CompletableFuture<Any?> {
+    return newFrame(action).run()
+}
+
+fun <T> CompletableFuture<Any?>.str(then: (String) -> T): CompletableFuture<T> {
+    return thenApply { then(it?.toString()?.trimIndent() ?: "") }
+}
+
+fun <T> CompletableFuture<Any?>.strOrNull(then: (String?) -> T): CompletableFuture<T> {
+    return thenApply { then(it?.toString()?.trimIndent()) }
+}
+
+fun <T> CompletableFuture<Any?>.bool(then: (Boolean) -> T): CompletableFuture<T> {
+    return thenApply { then(Coerce.toBoolean(it)) }
+}
+
+fun <T> CompletableFuture<Any?>.int(then: (Int) -> T): CompletableFuture<T> {
+    return thenApply { then(Coerce.toInteger(it)) }
+}
+
+fun <T> CompletableFuture<Any?>.long(then: (Long) -> T): CompletableFuture<T> {
+    return thenApply { then(Coerce.toLong(it)) }
+}
+
+fun <T> CompletableFuture<Any?>.double(then: (Double) -> T): CompletableFuture<T> {
+    return thenApply { then(Coerce.toDouble(it)) }
+}
+
+fun <T> CompletableFuture<Any?>.float(then: (Float) -> T): CompletableFuture<T> {
+    return thenApply { then(Coerce.toFloat(it)) }
 }

@@ -9,7 +9,7 @@ import taboolib.library.kether.QuestRegistry
 import taboolib.library.kether.QuestService
 import taboolib.library.kether.ServiceHolder
 import taboolib.module.configuration.Config
-import taboolib.module.configuration.SecuredFile
+import taboolib.module.configuration.Configuration
 import java.io.File
 import java.util.*
 import java.util.concurrent.Executor
@@ -30,7 +30,8 @@ object ScriptService : QuestService<ScriptContext> {
     private val asyncExecutor = Executors.newScheduledThreadPool(2)
 
     @Config("kether.yml")
-    lateinit var locale: SecuredFile
+    lateinit var locale: Configuration
+        private set
 
     val mainspace by lazy {
         Workspace(File(getDataFolder(), "kether"))
@@ -69,7 +70,7 @@ object ScriptService : QuestService<ScriptContext> {
     }
 
     override fun getLocalizedText(node: String, vararg params: Any): String {
-        return locale.getString(node, "{$node}").replaceWithOrder(*params)
+        return locale.getString(node, "{$node}")!!.replaceWithOrder(*params)
     }
 
     override fun startQuest(context: ScriptContext) {

@@ -1,7 +1,6 @@
 package taboolib.module.kether.action.loop
 
 import taboolib.common5.Coerce
-import taboolib.library.kether.ArgTypes
 import taboolib.library.kether.ParsedAction
 import taboolib.module.kether.*
 import java.util.concurrent.CompletableFuture
@@ -30,13 +29,13 @@ class ActionWhile(val condition: ParsedAction<*>, val action: ParsedAction<*>) :
         return future
     }
 
-    internal object Parser {
+    object Parser {
 
         @KetherParser(["while"])
         fun parser() = scriptParser {
-            ActionWhile(it.next(ArgTypes.ACTION), it.run {
+            ActionWhile(it.nextParsedAction(), it.run {
                 expect("then")
-                next(ArgTypes.ACTION)
+                it.nextParsedAction()
             })
         }
     }

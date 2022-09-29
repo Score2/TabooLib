@@ -9,6 +9,7 @@ import taboolib.common.platform.Platform
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.service.PlatformIO
 import java.io.File
+import taboolib.common.util.unsafeLazy
 
 /**
  * TabooLib
@@ -21,7 +22,7 @@ import java.io.File
 @PlatformSide([Platform.VELOCITY])
 class VelocityIO : PlatformIO {
 
-    val plugin by lazy { VelocityPlugin.getInstance() }
+    val plugin by unsafeLazy { VelocityPlugin.getInstance() }
 
     private val logger: Logger
         get() = try {
@@ -57,7 +58,7 @@ class VelocityIO : PlatformIO {
     }
 
     override fun releaseResourceFile(path: String, replace: Boolean): File {
-        val file = File(VelocityPlugin.getInstance().configDirectory.toFile(), path)
+        val file = File(getDataFolder(), path)
         if (file.exists() && !replace) {
             return file
         }
@@ -66,11 +67,11 @@ class VelocityIO : PlatformIO {
     }
 
     override fun getJarFile(): File {
-        return File(VelocityPlugin::class.java.protectionDomain.codeSource.location.toURI().path)
+        return VelocityPlugin.getPluginInstance()?.nativeJarFile() ?: File(VelocityPlugin::class.java.protectionDomain.codeSource.location.toURI().path)
     }
 
     override fun getDataFolder(): File {
-        return VelocityPlugin.getInstance().configDirectory.toFile()
+        return VelocityPlugin.getPluginInstance()?.nativeDataFolder() ?: VelocityPlugin.getInstance().configDirectory.toFile()
     }
 
     override fun getPlatformData(): Map<String, Any> {

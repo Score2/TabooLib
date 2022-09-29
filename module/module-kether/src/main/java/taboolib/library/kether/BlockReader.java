@@ -1,5 +1,9 @@
 package taboolib.library.kether;
 
+import taboolib.module.kether.Kether;
+import taboolib.module.kether.KetherError;
+import taboolib.module.kether.action.ActionLiteral;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -40,9 +44,24 @@ public class BlockReader extends AbstractStringReader {
         expect("=");
         this.currentBlock = name;
         List<ParsedAction<?>> actions = readActions();
+        checkLiteral(actions);
         SimpleQuest.SimpleBlock block = new SimpleQuest.SimpleBlock(name, actions);
         this.processActions(block, actions);
         this.blocks.put(name, block);
+    }
+
+    public void checkLiteral(List<ParsedAction<?>> actions) {
+        if (Kether.INSTANCE.isAllowToleranceParser()) {
+            ActionLiteral<?> before = null;
+            for (ParsedAction<?> action : actions) {
+                if (before != null) {
+                    throw KetherError.CUSTOM.create("Isolate literal \"" + before.getValue() + "\" is not end of block, maybe a misspelled action?");
+                }
+                if (action.getAction() instanceof ActionLiteral && ((ActionLiteral<?>) action.getAction()).isMisspelled()) {
+                    before = (ActionLiteral<?>) action.getAction();
+                }
+            }
+        }
     }
 
     public List<ParsedAction<?>> readActions() {
@@ -79,6 +98,7 @@ public class BlockReader extends AbstractStringReader {
         String name = nextAnonymousBlockName();
         this.currentBlock = name;
         List<ParsedAction<?>> actions = readActions();
+        checkLiteral(actions);
         this.currentBlock = lastBlock;
         if (!actions.isEmpty()) {
             ParsedAction<?> head = actions.get(0);

@@ -16,6 +16,7 @@ import java.util.function.Function;
  * @author 坏黑
  * @since 2019-05-24 17:44
  */
+@SuppressWarnings({"rawtypes", "unchecked"})
 public class ItemTag extends ItemTagData implements Map<String, ItemTagData> {
 
     private final Map<String, ItemTagData> value = Maps.newConcurrentMap();
@@ -27,7 +28,7 @@ public class ItemTag extends ItemTagData implements Map<String, ItemTagData> {
     }
 
     public void saveTo(ItemStack item) {
-        item.setItemMeta(NMSKt.setItemTag(item, this).getItemMeta());
+        item.setItemMeta(NMSItemTagKt.setItemTag(item, this).getItemMeta());
     }
 
     public String toJson() {
@@ -47,25 +48,95 @@ public class ItemTag extends ItemTagData implements Map<String, ItemTagData> {
     public String toJsonSimplified(int index) {
         StringBuilder builder = new StringBuilder();
         builder.append("{\n");
-        value.forEach((k, v) -> {
-            builder.append(copy("  ", index + 1))
-                    .append("\"")
-                    .append(k)
-                    .append("\"")
-                    .append(": ")
-                    .append(v.toJsonSimplified(index + 1))
-                    .append("\n");
-        });
+        value.forEach((k, v) -> builder.append(copy("  ", index + 1))
+                .append("\"")
+                .append(k)
+                .append("\"")
+                .append(": ")
+                .append(v.toJsonSimplified(index + 1))
+                .append("\n"));
         builder.append(copy("  ", index)).append("}");
         return builder.toString();
     }
 
     public static ItemTag fromJson(String json) {
-        return (ItemTag) fromJson(new JsonParser().parse(json));
+        return fromJson(new JsonParser().parse(json)).asCompound();
     }
 
     public static ItemTagData fromJson(JsonElement element) {
         return ItemTagSerializer.INSTANCE.deserializeData(element);
+    }
+
+    @Deprecated
+    public String toLegacyJson() {
+        return new Gson().toJson(this);
+    }
+
+    @Deprecated
+    public static ItemTag fromLegacyJson(String json) {
+        return fromLegacyJson(new JsonParser().parse(json)).asCompound();
+    }
+
+    @Deprecated
+    public static ItemTagData fromLegacyJson(JsonElement element) {
+        if (element instanceof JsonObject) {
+            JsonObject json = (JsonObject) element;
+            // base
+            if (json.has("type") && json.has("data") && json.entrySet().size() == 2) {
+                switch (ItemTagType.parse(json.get("type").getAsString())) {
+                    case BYTE:
+                        return new ItemTagData(json.get("data").getAsByte());
+                    case SHORT:
+                        return new ItemTagData(json.get("data").getAsShort());
+                    case INT:
+                        return new ItemTagData(json.get("data").getAsInt());
+                    case LONG:
+                        return new ItemTagData(json.get("data").getAsLong());
+                    case FLOAT:
+                        return new ItemTagData(json.get("data").getAsFloat());
+                    case DOUBLE:
+                        return new ItemTagData(json.get("data").getAsDouble());
+                    case STRING:
+                        return new ItemTagData(json.get("data").getAsString());
+                    case BYTE_ARRAY: {
+                        JsonArray array = json.get("data").getAsJsonArray();
+                        byte[] bytes = new byte[array.size()];
+                        for (int i = 0; i < array.size(); i++) {
+                            bytes[i] = array.get(i).getAsByte();
+                        }
+                        return new ItemTagData(bytes);
+                    }
+                    case INT_ARRAY: {
+                        JsonArray array = json.get("data").getAsJsonArray();
+                        int[] ints = new int[array.size()];
+                        for (int i = 0; i < array.size(); i++) {
+                            ints[i] = array.get(i).getAsInt();
+                        }
+                        return new ItemTagData(ints);
+                    }
+                    default: {
+                        return new ItemTagData("error: " + element);
+                    }
+                }
+            }
+            // compound
+            else {
+                ItemTag compound = new ItemTag();
+                for (Entry<String, JsonElement> elementEntry : json.entrySet()) {
+                    compound.put(elementEntry.getKey(), fromLegacyJson(elementEntry.getValue()));
+                }
+                return compound;
+            }
+        }
+        // list
+        else if (element instanceof JsonArray) {
+            ItemTagList list = new ItemTagList();
+            for (JsonElement jsonElement : (JsonArray) element) {
+                list.add(fromLegacyJson(jsonElement));
+            }
+            return list;
+        }
+        return new ItemTagData("error: " + element);
     }
 
     @Override
@@ -160,7 +231,6 @@ public class ItemTag extends ItemTagData implements Map<String, ItemTagData> {
         return value.remove(key);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public void putAll(@NotNull Map m) {
         this.value.putAll(m);
@@ -171,14 +241,12 @@ public class ItemTag extends ItemTagData implements Map<String, ItemTagData> {
         this.value.clear();
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     @NotNull
     @Override
     public Set keySet() {
         return this.value.keySet();
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     @NotNull
     @Override
     public Collection values() {

@@ -7,6 +7,7 @@ import de.dytanic.cloudnet.ext.bridge.player.CloudPlayer
 import de.dytanic.cloudnet.ext.bridge.player.IPlayerManager
 import taboolib.common.platform.*
 import taboolib.common.platform.service.PlatformAdapter
+import taboolib.common.util.Location
 import taboolib.platform.type.CloudNetV3CommandSender
 import taboolib.platform.type.CloudNetV3Player
 import taboolib.platform.type.sender
@@ -22,7 +23,7 @@ import taboolib.platform.type.sender
 @PlatformSide([Platform.CLOUDNET_V3])
 class CloudNetV3Adapter : PlatformAdapter {
 
-    val plugin by lazy { CloudNetV3Plugin.getInstance() }
+    val plugin by unsafeLazy { CloudNetV3Plugin.getInstance() }
 
     override fun console(): ProxyCommandSender {
         return adaptCommandSender(CloudNet.getInstance().consoleCommandSender)
@@ -40,9 +41,22 @@ class CloudNetV3Adapter : PlatformAdapter {
     }
 
     override fun adaptCommandSender(any: Any): ProxyCommandSender {
-        return if (any is CloudPlayer)
+        return if (any is CloudPlayer) {
             adaptPlayer(any)
-        else
+        } else {
             CloudNetV3CommandSender(CloudNet.getInstance().consoleCommandSender)
+        }
+    }
+
+    override fun adaptLocation(any: Any): Location {
+        TODO("Not yet implemented")
+    }
+
+    override fun platformLocation(location: Location): Any {
+        TODO("Not yet implemented")
+    }
+
+    override fun allWorlds(): List<String> {
+        TODO("Not yet implemented")
     }
 }

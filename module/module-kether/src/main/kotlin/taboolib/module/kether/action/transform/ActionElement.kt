@@ -45,7 +45,7 @@ class ActionElement {
         }
     }
 
-    internal object Parser {
+    object Parser {
 
         /**
          * size &array
@@ -56,11 +56,11 @@ class ActionElement {
         }
 
         /**
-         * elem *1 in &array
+         * elem 1 in &array
          */
         @KetherParser(["elem", "element"])
         fun parser1() = scriptParser {
-            ElementOf(it.next(ArgTypes.ACTION), it.run {
+            ElementOf(it.nextParsedAction(), it.run {
                 it.expects("in", "of")
                 it.next(ArgTypes.ACTION)
             })
