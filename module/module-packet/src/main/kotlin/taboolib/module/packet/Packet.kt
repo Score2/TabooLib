@@ -1,16 +1,23 @@
 package taboolib.module.packet
 
 import io.netty.buffer.ByteBuf
-import taboolib.common.platform.ProxyPlayer
 
 /**
  * TabooLib
+ * taboolib.module.packet.Packet
  *
  * @author Score2
- * @since 2021/11/18 23:14
+ * @since 2022/10/02 1:46
  */
-class Packet(val byteBuf: ByteBuf) {
+abstract class Packet(val id: Int, val side: PacketFlow) {
 
-    val name: String = TODO()
+    abstract fun write(byteBuf: ByteBuf)
 
+    companion object {
+
+        /*fun create(): Packet {
+
+        }*/
+
+    }
 }

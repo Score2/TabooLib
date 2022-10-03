@@ -1,10 +1,13 @@
 package taboolib.module.packet
 
 import io.netty.buffer.ByteBuf
-import io.netty.channel.Channel
+import io.netty.channel.ChannelDuplexHandler
 import io.netty.channel.ChannelHandlerContext
-import io.netty.handler.codec.ByteToMessageDecoder
-import io.netty.handler.codec.MessageToByteEncoder
+import io.netty.channel.ChannelInboundHandlerAdapter
+import io.netty.channel.ChannelOutboundHandlerAdapter
+import io.netty.channel.ChannelPromise
+import taboolib.common.LifeCycle
+import taboolib.common.platform.Awake
 import taboolib.common.platform.ProxyPlayer
 import taboolib.common.platform.function.implementations
 import taboolib.common.platform.function.pluginId
@@ -19,57 +22,80 @@ import java.util.concurrent.Executors
  */
 object ChannelExecutor {
 
-    private val DECODER_BASE_NAME by lazy { implementations<PlatformProtocolHandler>().DECODER_BASE_NAME }
-    private val ENCODER_BASE_NAME by lazy { implementations<PlatformProtocolHandler>().ENCODER_BASE_NAME }
+    private val DECODER_NAME = "taboolib_decoder_${pluginId}"
+    private val ENCODER_NAME = "taboolib_encoder_${pluginId}"
 
-    private val DECODER_NAME = "taboolib_${pluginId}_packet_decoder"
-    private val ENCODER_NAME = "taboolib_${pluginId}_packet_encoder"
+    private val HANDLER_NAME = "taboolib_packet_handler_${pluginId}"
+    private val HANDLER_IMPL_NAME = "taboolib_packet_impl_handler_${pluginId}"
 
-    private val addChannelService = Executors.newSingleThreadExecutor()
-    private val removeChannelService = Executors.newSingleThreadExecutor()
+    private val pipelineService = Executors.newSingleThreadExecutor()
 
-    fun addPlayerChannel(player: ProxyPlayer, channel: Channel) {
-        addChannelService.submit {
-            try {
-                channel.pipeline().addAfter(DECODER_BASE_NAME, DECODER_NAME, object : ByteToMessageDecoder() {
-                    override fun decode(channelHandlerContext: ChannelHandlerContext, byteBuf: ByteBuf, list: MutableList<Any>) {
-                        if (PacketEvent.Receive(player, Packet(byteBuf)).call()) {
-                            list.add(byteBuf)
-                        }
+    // For server
+    @Awake(LifeCycle.ENABLE)
+    fun initChannels() {
+        implementations<PlatformProtocolHandler>().getServerChannels().forEach { channel ->
+//            channel.pipeline().addFirst(DECODER_NAME, PacketDecode(PacketFlow.SERVERBOUND))
+//            channel.pipeline().addFirst(ENCODER_NAME, PacketEncode(PacketFlow.CLIENTBOUND))
+
+            /*channel.pipeline().addFirst("taboolib_packet_out_$pluginId", object : ChannelDuplexHandler() {
+
+            })*/
+
+//            channel.pipeline().addLast(HANDLER_NAME, PacketHandler(PacketFlow.SERVERBOUND))
+
+            channel.pipeline().addFirst("taboolib_packet_out_$pluginId", object : ChannelOutboundHandlerAdapter() {
+                override fun write(ctx: ChannelHandlerContext, msg: Any, promise: ChannelPromise) {
+                    if (msg !is ByteBuf) {
+                        return super.write(ctx, msg, promise)
                     }
-                })
-            } catch (ex: Throwable) {
-                ex.printStackTrace()
-            }
-            try {
-                channel.pipeline().addAfter(ENCODER_BASE_NAME, ENCODER_NAME, object : MessageToByteEncoder<ByteBuf>() {
-                    override fun encode(channelHandlerContext: ChannelHandlerContext, byteBuf: ByteBuf, list: MutableList<Any>) {
-                        if (PacketEvent.Send(player, Packet(byteBuf)).call()) {
-                            list.add(byteBuf)
-                        }
+                    val slice = msg.copy().markReaderIndex()
+                    val packetId = slice.readVarInt()
+
+                    val packet = BytePacket(packetId, PacketFlow.CLIENTBOUND, slice)
+
+                    if (PacketEvent.Receive(player, packet).call()) {
+                        slice.markReaderIndex()
+                        slice.markWriterIndex()
+                        msg.clear()
+                        msg.writeBytes(slice)
+
+                        super.write(ctx, msg, promise)
                     }
-                })
-            } catch (ex: Throwable) {
-                ex.printStackTrace()
-            }
+                }
+            })
         }
     }
-    fun removePlayerChannel(player: ProxyPlayer, channel: Channel) {
-        removeChannelService.submit {
-            try {
-                if (channel.pipeline()[DECODER_NAME] != null) {
-                    channel.pipeline().remove(DECODER_NAME)
+
+    fun initPlayer(player: ProxyPlayer) {
+        val channel = implementations<PlatformProtocolHandler>().getChannel(player)
+        pipelineService.submit {
+//            channel.pipeline().addFirst(DECODER_NAME, PacketDecode(PacketFlow.CLIENTBOUND))
+//            channel.pipeline().addFirst(ENCODER_NAME, PacketEncode(PacketFlow.SERVERBOUND))
+
+//            channel.pipeline().addLast(HANDLER_NAME, PacketHandler(PacketFlow.CLIENTBOUND))
+
+            channel.pipeline().addFirst("taboolib_packet_in_$pluginId", object : ChannelOutboundHandlerAdapter() {
+                override fun write(ctx: ChannelHandlerContext, msg: Any, promise: ChannelPromise) {
+                    if (msg !is ByteBuf) {
+                        return super.write(ctx, msg, promise)
+                    }
+                    val slice = msg.copy()
+                    val packetId = slice.readVarInt()
+
+                    val packet = BytePacket(packetId, PacketFlow.SERVERBOUND, slice)
+
+                    if (PacketEvent.Send(player, packet).call()) {
+                        slice.markReaderIndex()
+                        slice.markWriterIndex()
+                        msg.clear()
+                        msg.writeBytes(slice)
+
+                        super.write(ctx, msg, promise)
+                    }
                 }
-            } catch (ex: Throwable) {
-                ex.printStackTrace()
-            }
-            try {
-                if (channel.pipeline()[ENCODER_NAME] != null) {
-                    channel.pipeline().remove(ENCODER_NAME)
-                }
-            } catch (ex: Throwable) {
-                ex.printStackTrace()
-            }
+            })
         }
     }
+
+
 }

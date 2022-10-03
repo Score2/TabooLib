@@ -22,7 +22,7 @@ import java.util.concurrent.Executors
 @PlatformSide([Platform.BUKKIT])
 object ChannelExecutor {
 
-    private val id = "taboolib_${pluginId}_nms_packet_handler"
+    private val id = "taboolib_${pluginId}_packet_handler"
     private val addChannelService = Executors.newSingleThreadExecutor()
     private val removeChannelService = Executors.newSingleThreadExecutor()
 

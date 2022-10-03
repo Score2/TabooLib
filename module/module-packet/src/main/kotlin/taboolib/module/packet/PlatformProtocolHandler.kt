@@ -1,5 +1,8 @@
 package taboolib.module.packet
 
+import io.netty.channel.Channel
+import taboolib.common.platform.ProxyPlayer
+
 /**
  * TabooLib
  * taboolib.module.packet.PlatformProtocolHandle
@@ -9,7 +12,8 @@ package taboolib.module.packet
  */
 interface PlatformProtocolHandler {
 
-    val DECODER_BASE_NAME: String
-    val ENCODER_BASE_NAME: String
+    fun getServerChannels(): List<Channel>
+
+    fun getChannel(player: ProxyPlayer): Channel
 
 }
